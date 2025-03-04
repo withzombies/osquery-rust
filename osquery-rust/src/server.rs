@@ -1,9 +1,9 @@
+use clap::crate_name;
 use std::collections::HashMap;
 use std::io::Error;
 use std::os::unix::net::UnixStream;
 use std::thread;
 use std::time::Duration;
-use clap::crate_name;
 use strum::VariantNames;
 use thrift::protocol::*;
 use thrift::transport::*;
@@ -56,13 +56,15 @@ impl<P: OsqueryPlugin + Clone + Send + Sync + 'static> Server<P> {
 
         let name = match name {
             None => crate_name!(),
-            Some(name) => name
+            Some(name) => name,
         };
+
+        let client = Client::new(socket_path, Default::default())?;
 
         Ok(Server {
             name: name.to_string(),
             socket_path: socket_path.to_string(),
-            client: Client::new(socket_path, Default::default()).unwrap(),
+            client: client,
             plugins: Vec::new(),
             server: None,
             transport: None,
@@ -133,7 +135,9 @@ impl<P: OsqueryPlugin + Clone + Send + Sync + 'static> Server<P> {
 
         match server.listen_uds(listen_path.clone()) {
             Ok(_) => {}
-            Err(e) => { println!("FATAL: {} while binding to {}", e, listen_path) }
+            Err(e) => {
+                println!("FATAL: {} while binding to {}", e, listen_path)
+            }
         }
         self.server = Some(server);
 
@@ -235,7 +239,7 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
                         Ok(plugin.call(request))
                     }
                     _ => {
-                        todo!()
+                        todo!("unknown action {action}")
                     }
                 }
             }
@@ -247,7 +251,9 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
     }
 
     fn handle_shutdown(&self) -> thrift::Result<()> {
-        todo!()
+        println!("Shutdown");
+
+        Ok(())
     }
 }
 

@@ -17,7 +17,7 @@ impl Client {
     pub fn new(socket_path: &str, _timeout: Duration) -> Result<Self, Error> {
         // todo: error handling, socket could be unable to connect to
         // todo: use timeout
-        let socket_tx = UnixStream::connect(socket_path).unwrap();
+        let socket_tx = UnixStream::connect(socket_path)?;
         let socket_rx = socket_tx.try_clone().unwrap();
 
         let in_proto = TBinaryInputProtocol::new(socket_tx, true);

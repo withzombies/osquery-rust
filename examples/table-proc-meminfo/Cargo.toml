@@ -16,4 +16,4 @@ license = "MIT OR Apache-2.0"
 # Clap version string according to Clap compatibility policy
 clap = { version = "^3", features = ["cargo", "derive"] }
 regex = { version = "1.10.4" }
-osquery-rust = { git = "https://github.com/polarlabs/osquery-rust.git", branch = "main" }
+osquery-rust = { path = "../../osquery-rust" }

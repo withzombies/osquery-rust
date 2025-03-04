@@ -31,7 +31,9 @@
 //! fn main() -> std::io::Result<()> {
 //!
 //!     // Args available due to annotation
-//!     let args = Args::parse();
+//!     let args = Args::try_parse();
+//!
+//!     println!("Args: {:#?}", args);
 //!
 //!     // Have a look at the example folder for more details.
 //!
@@ -52,9 +54,9 @@ pub use crate::server::Server;
 
 // Re-exports
 pub type ExtensionResponse = _osquery::osquery::ExtensionResponse;
-pub type ExtensionPluginRequest =_osquery::osquery::ExtensionPluginRequest;
-pub type ExtensionPluginResponse =_osquery::osquery::ExtensionPluginResponse;
-pub type ExtensionStatus =_osquery::osquery::ExtensionStatus;
+pub type ExtensionPluginRequest = _osquery::osquery::ExtensionPluginRequest;
+pub type ExtensionPluginResponse = _osquery::osquery::ExtensionPluginResponse;
+pub type ExtensionStatus = _osquery::osquery::ExtensionStatus;
 
 ///
 /// Expose all structures required in virtually any osquery extension
@@ -63,9 +65,11 @@ pub type ExtensionStatus =_osquery::osquery::ExtensionStatus;
 /// use osquery_rust::prelude::*;
 /// ```
 pub mod prelude {
-    pub use crate::{ExtensionResponse, ExtensionPluginRequest, ExtensionPluginResponse, ExtensionStatus};
-    pub use crate::{Server};
-    pub use clap::{Parser};
+    pub use crate::Server;
+    pub use crate::{
+        ExtensionPluginRequest, ExtensionPluginResponse, ExtensionResponse, ExtensionStatus,
+    };
+    pub use clap::Parser;
 }
 
 // Defines a macro to import code from osquery-rust-codegen,

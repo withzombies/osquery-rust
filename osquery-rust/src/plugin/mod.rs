@@ -1,6 +1,6 @@
-mod table;
 mod _enums;
 mod _traits;
+mod table;
 
 // Re-exporting all public structures
 pub use _enums::plugin::Plugin;

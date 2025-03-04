@@ -9,7 +9,9 @@ pub use query_constraint::QueryConstraints;
 use std::collections::BTreeMap;
 
 use crate::_osquery as osquery;
-use crate::_osquery::{ExtensionPluginRequest, ExtensionPluginResponse, ExtensionResponse, ExtensionStatus};
+use crate::_osquery::{
+    ExtensionPluginRequest, ExtensionPluginResponse, ExtensionResponse, ExtensionStatus,
+};
 use crate::plugin::{OsqueryPlugin, Registry};
 
 type TableFn = fn(ExtensionPluginRequest) -> osquery::ExtensionResponse;
