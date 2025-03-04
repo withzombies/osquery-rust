@@ -31,7 +31,7 @@
 //! fn main() -> std::io::Result<()> {
 //!
 //!     // Args available due to annotation
-//!     let args = Args::parse();
+//!     let args = Args::try_parse();
 //!
 //!     // Have a look at the example folder for more details.
 //!

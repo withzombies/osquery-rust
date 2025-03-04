@@ -1,7 +1,6 @@
 #[derive(clap::Parser, Debug)]
-#[clap(author, version, about, long_about = None, global_setting = clap::AppSettings::DeriveDisplayOrder)]
+#[clap(author, version, about, long_about = None)]
 #[clap(arg_required_else_help = true)]
-#[clap(global_setting(clap::AppSettings::DeriveDisplayOrder))]
 #[clap(group(
   clap::ArgGroup::new("mode")
     .required(true)
