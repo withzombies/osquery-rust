@@ -25,17 +25,6 @@ jobs:
           profile: minimal
           override: true
 
-      - name: Install Osquery on Linux
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y osquery
-
-      - name: Install Osquery on macOS
-        if: runner.os == 'macOS'
-        run: |
-          brew install osquery
-
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -56,9 +45,6 @@ jobs:
 
       - name: Build
         run: cargo build --verbose
-
-      - name: Launch Osquery
-        run: osqueryd --S --config_path=/etc/osquery/osquery.conf --pidfile=/tmp/osquery.pid --database_path=/var/osquery --extensions_socket=/var/osquery/osquery.em --extensions_autoload=/etc/osquery/extensions.load &
 
       - name: Run tests
         run: cargo test --verbose
