@@ -1,10 +1,11 @@
+use clap::crate_name;
+use clap::Parser;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use clap::{crate_name};
 
-use osquery_rust::prelude::*;
 use osquery_rust::plugin::{ColumnDef, ColumnType, Plugin, Table};
+use osquery_rust::prelude::*;
 
 use regex::Regex;
 
@@ -14,9 +15,13 @@ fn main() -> std::io::Result<()> {
 
     // todo: handle non existing socket gracefully
     if !args.standalone {
-        let mut manager = Server::new(Some(crate_name!()), args.socket().unwrap().as_str()).unwrap();
+        let mut manager = Server::new(Some(crate_name!()), args.socket().unwrap().as_str())?;
 
-        manager.register_plugin(Plugin::Table(Table::new("proc_meminfo", columns(), generate)));
+        manager.register_plugin(Plugin::Table(Table::new(
+            "proc_meminfo",
+            columns(),
+            generate,
+        )));
 
         manager.run();
     }
