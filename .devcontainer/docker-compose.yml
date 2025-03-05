@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+    environment:
+      - RUST_BACKTRACE=1
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
