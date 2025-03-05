@@ -34,11 +34,11 @@ impl Client {
 //
 impl osquery::TExtensionManagerSyncClient for Client {
     fn extensions(&mut self) -> thrift::Result<osquery::InternalExtensionList> {
-        todo!()
+        self.client.extensions()
     }
 
     fn options(&mut self) -> thrift::Result<osquery::InternalOptionList> {
-        todo!()
+        self.client.options()
     }
 
     fn register_extension(
@@ -53,15 +53,15 @@ impl osquery::TExtensionManagerSyncClient for Client {
         &mut self,
         _uuid: osquery::ExtensionRouteUUID,
     ) -> thrift::Result<osquery::ExtensionStatus> {
-        todo!()
+        self.client.deregister_extension(_uuid)
     }
 
     fn query(&mut self, _sql: String) -> thrift::Result<osquery::ExtensionResponse> {
-        todo!()
+        self.client.query(_sql)
     }
 
     fn get_query_columns(&mut self, _sql: String) -> thrift::Result<osquery::ExtensionResponse> {
-        todo!()
+        self.client.get_query_columns(_sql)
     }
 }
 
