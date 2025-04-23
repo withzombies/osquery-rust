@@ -19,27 +19,6 @@
 //! osquery-rust = "^0.1"
 //! ```
 //!
-//! ## Get started
-//!
-//! Annotate `main` with `#[osquery_rust::args]` to import code defining the CLI
-//! of your extension.
-//!
-//! ```
-//! use osquery_rust::prelude::*;
-//!
-//! #[osquery_rust::args]
-//! fn main() -> std::io::Result<()> {
-//!
-//!     // Args available due to annotation
-//!     let args = Args::try_parse();
-//!
-//!     println!("Args: {:#?}", args);
-//!
-//!     // Have a look at the example folder for more details.
-//!
-//!     Ok(())
-//! }
-//! ```
 //!
 
 #![forbid(unsafe_code)]
@@ -69,19 +48,4 @@ pub mod prelude {
     pub use crate::{
         ExtensionPluginRequest, ExtensionPluginResponse, ExtensionResponse, ExtensionStatus,
     };
-    pub use clap::Parser;
 }
-
-// Defines a macro to import code from osquery-rust-codegen,
-// if feature "macros" is enabled.
-macro_rules! codegen_reexport {
-    ($name:ident) => {
-        #[cfg(feature = "macros")]
-        // #[doc(cfg)] is experimental
-        // #[cfg_attr(docsrs, doc(cfg(feature = "macros")))]
-        pub use osquery_rust_codegen::$name;
-    };
-}
-
-// Provide helper code from osquery-rust-codegen to define CLI of Osquery extension
-codegen_reexport!(args);

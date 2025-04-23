@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "osquery-rust",
-    "osquery-rust-codegen",
     "examples/table-proc-meminfo",
 ]
 

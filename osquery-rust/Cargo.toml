@@ -21,14 +21,6 @@ license = "MIT OR Apache-2.0"
 name = "osquery_rust"
 path = "src/lib.rs"
 
-[features]
-default = ["macros"]
-
-# Helper for main in osquery plugins
-macros = [
-    "osquery-rust-codegen",
-]
-
 [dependencies]
 # Clap version string according to Clap compatibility policy
 clap = { version = "^4.5.4", features = ["cargo", "derive"] }
@@ -36,5 +28,3 @@ clap = { version = "^4.5.4", features = ["cargo", "derive"] }
 strum = { version = "0.26.2" }
 strum_macros = { version = "0.26.2" }
 thrift = { version = "0.17.0" }
-
-osquery-rust-codegen = { path = "../osquery-rust-codegen", optional = true }

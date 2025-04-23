@@ -64,7 +64,7 @@ impl<P: OsqueryPlugin + Clone + Send + Sync + 'static> Server<P> {
         Ok(Server {
             name: name.to_string(),
             socket_path: socket_path.to_string(),
-            client: client,
+            client,
             plugins: Vec::new(),
             server: None,
             transport: None,
