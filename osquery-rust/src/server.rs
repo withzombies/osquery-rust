@@ -102,7 +102,7 @@ impl<P: OsqueryPlugin + Clone + Send + Sync + 'static> Server<P> {
         )?;
 
         //if stat.code != Some(0) {
-        println!(
+        log::info!(
             "Status {} registering extension {} ({}): {}",
             stat.code.unwrap_or(0),
             self.name,
@@ -130,7 +130,7 @@ impl<P: OsqueryPlugin + Clone + Send + Sync + 'static> Server<P> {
         match server.listen_uds(listen_path.clone()) {
             Ok(_) => {}
             Err(e) => {
-                println!("FATAL: {} while binding to {}", e, listen_path)
+                log::error!("FATAL: {} while binding to {}", e, listen_path)
             }
         }
         self.server = Some(server);
@@ -199,9 +199,9 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
     ) -> thrift::Result<osquery::ExtensionResponse> {
         let ok = osquery::ExtensionStatus::default();
 
-        //println!("Registry: {}", registry);
-        //println!("Item: {}", item);
-        //println!("Request: {:?}", request);
+        //log::trace!("Registry: {}", registry);
+        //log::trace!("Item: {}", item);
+        //log::trace!("Request: {:?}", request);
 
         match request.get("action") {
             Some(action) => {
@@ -262,14 +262,14 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
                 }
             }
             None => {
-                println!("Error: unknown ExtensionPluginRequest");
+                log::error!("Error: unknown ExtensionPluginRequest");
                 todo!()
             }
         }
     }
 
     fn handle_shutdown(&self) -> thrift::Result<()> {
-        println!("Shutdown");
+        log::trace!("Shutdown");
 
         Ok(())
     }

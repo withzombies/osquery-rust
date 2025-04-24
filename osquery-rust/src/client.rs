@@ -5,6 +5,7 @@ use std::time::Duration;
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 
 use crate::_osquery as osquery;
+use crate::_osquery::TExtensionManagerSyncClient;
 
 pub struct Client {
     client: osquery::ExtensionManagerSyncClient<
@@ -83,6 +84,6 @@ impl osquery::TExtensionSyncClient for Client {
     }
 
     fn shutdown(&mut self) -> thrift::Result<()> {
-        todo!()
+        self.client.shutdown()
     }
 }

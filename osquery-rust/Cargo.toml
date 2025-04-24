@@ -39,3 +39,4 @@ clap = { version = "^4.5.4", features = ["cargo", "derive"] }
 strum = { version = "0.26.2" }
 strum_macros = { version = "0.26.2" }
 thrift = { version = "0.17.0" }
+log = "0.4.27"
