@@ -2,7 +2,7 @@ use clap::crate_name;
 use clap::Parser;
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Error, ErrorKind};
 
 use osquery_rust::plugin::{ColumnDef, ColumnType, Plugin, Table};
 use osquery_rust::prelude::*;
@@ -62,7 +62,11 @@ fn main() -> std::io::Result<()> {
 
     // todo: handle non existing socket gracefully
     if !args.standalone {
-        let mut manager = Server::new(Some(crate_name!()), args.socket().unwrap().as_str())?;
+        let Some(socket) = args.socket() else {
+            return Err(Error::new(ErrorKind::InvalidInput, "No socket provided"));
+        };
+
+        let mut manager = Server::new(Some(crate_name!()), socket.as_str())?;
 
         manager.register_plugin(Plugin::Table(Table::new(
             "proc_meminfo",
@@ -70,7 +74,7 @@ fn main() -> std::io::Result<()> {
             generate,
         )));
 
-        manager.run();
+        manager.run().map_err(Error::other)?;
     } else {
         todo!("standalone mode has not been implemented");
     }
@@ -80,20 +84,39 @@ fn main() -> std::io::Result<()> {
 
 fn columns() -> Vec<ColumnDef> {
     let mut columns: Vec<ColumnDef> = Vec::new();
-    let regex = Regex::new(r"(?P<label>\S+):").unwrap();
+    let Ok(regex) = Regex::new(r"(?P<label>\S+):") else {
+        return vec![];
+    };
 
-    let f = File::open("/proc/meminfo").unwrap();
+    let f = match File::open("/proc/meminfo") {
+        Ok(f) => f,
+        Err(e) => {
+            println!("Error opening file: {}", e);
+            return vec![];
+        }
+    };
+
     let reader = BufReader::new(f);
 
     for line in reader.lines() {
-        let s: String = line.unwrap();
+        let line = match line {
+            Ok(line) => line,
+            Err(e) => {
+                println!("Error reading line: {}", e);
+                continue;
+            }
+        };
 
-        let cap = regex.captures(s.as_str()).unwrap();
-        let s = cap[1].replace('(', "_").replace(')', "");
-        columns.push(ColumnDef::new(
-            s.to_lowercase().as_str(),
-            ColumnType::BigInt,
-        ));
+        if let Some(cap) = regex.captures(line.as_str()) {
+            if cap.len() != 2 {
+                continue;
+            }
+            let s = cap[1].replace('(', "_").replace(')', "");
+            columns.push(ColumnDef::new(
+                s.to_lowercase().as_str(),
+                ColumnType::BigInt,
+            ));
+        }
     }
 
     columns
@@ -106,14 +129,35 @@ fn generate(_req: ExtensionPluginRequest) -> ExtensionResponse {
 
 fn proc_meminfo() -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
-    let regex = Regex::new(r"(?P<label>\S+):\s+(?P<number>\d+)").unwrap();
+    let Ok(regex) = Regex::new(r"(?P<label>\S+):\s+(?P<number>\d+)") else {
+        return map;
+    };
 
-    let f = File::open("/proc/meminfo").unwrap();
+    let f = match File::open("/proc/meminfo") {
+        Ok(x) => x,
+        Err(e) => {
+            println!("Error opening file: {}", e);
+            return map;
+        }
+    };
     let reader = BufReader::new(f);
 
     for line in reader.lines() {
-        let s: String = line.unwrap();
-        let cap = regex.captures(s.as_str()).unwrap();
+        let line = match line {
+            Ok(line) => line,
+            Err(e) => {
+                println!("Error reading line: {}", e);
+                continue;
+            }
+        };
+
+        let Some(cap) = regex.captures(line.as_str()) else {
+            continue;
+        };
+
+        if cap.len() != 3 {
+            continue;
+        }
         let s = cap[1].replace('(', "_").replace(')', "");
         map.insert(s.to_lowercase(), cap[2].to_string());
     }

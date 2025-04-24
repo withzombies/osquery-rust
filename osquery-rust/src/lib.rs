@@ -29,6 +29,8 @@ pub(crate) mod _osquery;
 pub(crate) mod client;
 pub mod plugin;
 pub(crate) mod server;
+mod util;
+
 pub use crate::server::Server;
 
 // Re-exports

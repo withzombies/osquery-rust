@@ -12,6 +12,7 @@ use crate::_osquery as osquery;
 use crate::_osquery::{TExtensionManagerSyncClient, TExtensionSyncClient};
 use crate::client::Client;
 use crate::plugin::{OsqueryPlugin, Plugin, Registry};
+use crate::util::OptionToThriftResult;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
 const DEFAULT_PING_INTERVAL: Duration = Duration::from_millis(5000);
@@ -54,10 +55,7 @@ impl<P: OsqueryPlugin + Clone + Send + Sync + 'static> Server<P> {
             reg.insert((*var).to_string(), HashMap::new());
         }
 
-        let name = match name {
-            None => crate_name!(),
-            Some(name) => name,
-        };
+        let name = name.unwrap_or(crate_name!());
 
         let client = Client::new(socket_path, Default::default())?;
 
@@ -84,43 +82,39 @@ impl<P: OsqueryPlugin + Clone + Send + Sync + 'static> Server<P> {
         self
     }
 
-    pub fn run(&mut self) {
-        self.start();
+    pub fn run(&mut self) -> thrift::Result<()> {
+        self.start()?;
         loop {
-            // todo: handle error
-            self.client.ping().unwrap();
+            self.client.ping()?;
             thread::sleep(self.ping_interval);
         }
     }
 
-    fn start(&mut self) {
-        let stat = self
-            .client
-            .register_extension(
-                osquery::InternalExtensionInfo {
-                    name: Some(self.name.clone()),
-                    version: Some("1.0".to_string()),
-                    sdk_version: Some("Unknown".to_string()),
-                    min_sdk_version: Some("Unknown".to_string()),
-                },
-                self.generate_registry(),
-            )
-            .unwrap();
+    fn start(&mut self) -> thrift::Result<()> {
+        let stat = self.client.register_extension(
+            osquery::InternalExtensionInfo {
+                name: Some(self.name.clone()),
+                version: Some("1.0".to_string()),
+                sdk_version: Some("Unknown".to_string()),
+                min_sdk_version: Some("Unknown".to_string()),
+            },
+            self.generate_registry()?,
+        )?;
 
         //if stat.code != Some(0) {
         println!(
             "Status {} registering extension {} ({}): {}",
-            stat.code.unwrap(),
+            stat.code.unwrap_or(0),
             self.name,
-            stat.uuid.unwrap(),
-            stat.message.unwrap()
+            stat.uuid.unwrap_or(0),
+            stat.message.unwrap_or_else(|| "No message".to_string())
         );
         //}
 
         self.uuid = stat.uuid;
-        let listen_path = format!("{}.{}", self.socket_path, self.uuid.unwrap());
+        let listen_path = format!("{}.{}", self.socket_path, self.uuid.unwrap_or(0));
 
-        let processor = osquery::ExtensionManagerSyncProcessor::new(Handler::new(&self.plugins));
+        let processor = osquery::ExtensionManagerSyncProcessor::new(Handler::new(&self.plugins)?);
         let i_tr_fact: Box<dyn TReadTransportFactory> =
             Box::new(TBufferedReadTransportFactory::new());
         let i_pr_fact: Box<dyn TInputProtocolFactory> =
@@ -142,9 +136,11 @@ impl<P: OsqueryPlugin + Clone + Send + Sync + 'static> Server<P> {
         self.server = Some(server);
 
         self.started = true;
+
+        Ok(())
     }
 
-    fn generate_registry(&self) -> osquery::ExtensionRegistry {
+    fn generate_registry(&self) -> thrift::Result<osquery::ExtensionRegistry> {
         let mut registry = osquery::ExtensionRegistry::new();
 
         for var in Registry::VARIANTS {
@@ -154,10 +150,10 @@ impl<P: OsqueryPlugin + Clone + Send + Sync + 'static> Server<P> {
         for plugin in self.plugins.iter() {
             registry
                 .get_mut(plugin.registry().to_string().as_str())
-                .unwrap()
+                .ok_or_thrift_err(|| format!("Failed to register plugin {}", plugin.name()))?
                 .insert(plugin.name(), plugin.routes());
         }
-        registry
+        Ok(registry)
     }
 }
 
@@ -166,7 +162,7 @@ struct Handler<P: OsqueryPlugin + Clone> {
 }
 
 impl<P: OsqueryPlugin + Clone> Handler<P> {
-    fn new(plugins: &[P]) -> Self {
+    fn new(plugins: &[P]) -> thrift::Result<Self> {
         let mut reg: HashMap<String, HashMap<String, P>> = HashMap::new();
         for var in Registry::VARIANTS {
             reg.insert((*var).to_string(), HashMap::new());
@@ -174,11 +170,11 @@ impl<P: OsqueryPlugin + Clone> Handler<P> {
 
         for plugin in plugins.iter() {
             reg.get_mut(plugin.registry().to_string().as_str())
-                .unwrap()
+                .ok_or_thrift_err(|| format!("Failed to register plugin {}", plugin.name()))?
                 .insert(plugin.name(), plugin.clone());
         }
 
-        Handler { registry: reg }
+        Ok(Handler { registry: reg })
     }
 }
 
@@ -214,9 +210,20 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
                         let plugin = self
                             .registry
                             .get(registry.as_str())
-                            .unwrap()
+                            .ok_or_thrift_err(|| {
+                                format!(
+                                    "Failed to get registry:{} from registries",
+                                    registry.as_str()
+                                )
+                            })?
                             .get(item.as_str())
-                            .unwrap();
+                            .ok_or_thrift_err(|| {
+                                format!(
+                                    "Failed to item:{} from registry:{}",
+                                    item.as_str(),
+                                    registry.as_str()
+                                )
+                            })?;
                         let resp = plugin.routes();
 
                         Ok(osquery::ExtensionResponse::new(ok, resp))
@@ -233,9 +240,20 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
                         let plugin = self
                             .registry
                             .get(registry.as_str())
-                            .unwrap()
+                            .ok_or_thrift_err(|| {
+                                format!(
+                                    "Failed to get registry:{} from registries",
+                                    registry.as_str()
+                                )
+                            })?
                             .get(item.as_str())
-                            .unwrap();
+                            .ok_or_thrift_err(|| {
+                                format!(
+                                    "Failed to item:{} from registry:{}",
+                                    item.as_str(),
+                                    registry.as_str()
+                                )
+                            })?;
                         Ok(plugin.call(request))
                     }
                     _ => {

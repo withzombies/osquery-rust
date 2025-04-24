@@ -8,12 +8,14 @@ pub enum Registry {
     Table,
 }
 
-impl ToString for Registry {
-    fn to_string(&self) -> String {
+use std::fmt;
+
+impl fmt::Display for Registry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Registry::Config => "config".to_string(),
-            Registry::Logger => "logger".to_string(),
-            Registry::Table => "table".to_string(),
+            Registry::Config => write!(f, "config"),
+            Registry::Logger => write!(f, "logger"),
+            Registry::Table => write!(f, "table"),
         }
     }
 }

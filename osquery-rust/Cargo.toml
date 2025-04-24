@@ -17,6 +17,17 @@ documentation = "https://docs.rs/osquery-rust"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
+[lints.clippy]
+all = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+unreachable = "deny"
+undocumented_unsafe_blocks = "deny"
+unwrap_in_result = "deny"
+ok_expect = "deny"
+
 [lib]
 name = "osquery_rust"
 path = "src/lib.rs"

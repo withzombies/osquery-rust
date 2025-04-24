@@ -25,6 +25,7 @@ use thrift::protocol::verify_expected_sequence_number;
 use thrift::protocol::verify_expected_service_call;
 use thrift::protocol::verify_required_field_exists;
 use thrift::server::TProcessor;
+use crate::util::OptionToThriftResult;
 
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ExtensionCode(pub i32);
@@ -879,17 +880,16 @@ struct ExtensionPingResult {
 
 impl ExtensionPingResult {
   fn ok_or(self) -> thrift::Result<ExtensionStatus> {
-    if self.result_value.is_some() {
-      Ok(self.result_value.unwrap())
-    } else {
-      Err(
+    match self.result_value {
+      Some(val) => Ok(val),
+      None => Err(
         thrift::Error::Application(
           ApplicationError::new(
             ApplicationErrorKind::MissingResult,
             "no result received for ExtensionPing"
           )
         )
-      )
+      ),
     }
   }
   fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<ExtensionPingResult> {
@@ -985,9 +985,27 @@ impl ExtensionCallArgs {
     verify_required_field_exists("ExtensionCallArgs.item", &f_2)?;
     verify_required_field_exists("ExtensionCallArgs.request", &f_3)?;
     let ret = ExtensionCallArgs {
-      registry: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      item: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      request: f_3.expect("auto-generated code should have checked for presence of required fields"),
+      registry: f_1.ok_or(
+        thrift::Error::Application(
+          ApplicationError::new(
+            ApplicationErrorKind::InternalError,
+            "auto-generated code should have checked for presence of required fields"
+          )
+      ))?,
+      item: f_2.ok_or(
+        thrift::Error::Application(
+          ApplicationError::new(
+            ApplicationErrorKind::InternalError,
+            "auto-generated code should have checked for presence of required fields"
+          )
+        ))?,
+      request: f_3.ok_or(
+        thrift::Error::Application(
+          ApplicationError::new(
+            ApplicationErrorKind::InternalError,
+            "auto-generated code should have checked for presence of required fields"
+          )
+        ))?,
     };
     Ok(ret)
   }
@@ -1024,17 +1042,16 @@ struct ExtensionCallResult {
 
 impl ExtensionCallResult {
   fn ok_or(self) -> thrift::Result<ExtensionResponse> {
-    if self.result_value.is_some() {
-      Ok(self.result_value.unwrap())
-    } else {
-      Err(
+    match self.result_value {
+      Some(val) => Ok(val),
+      None => Err(
         thrift::Error::Application(
           ApplicationError::new(
             ApplicationErrorKind::MissingResult,
             "no result received for ExtensionCall"
           )
         )
-      )
+      ),
     }
   }
   fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<ExtensionCallResult> {
@@ -1710,17 +1727,16 @@ struct ExtensionManagerExtensionsResult {
 
 impl ExtensionManagerExtensionsResult {
   fn ok_or(self) -> thrift::Result<InternalExtensionList> {
-    if self.result_value.is_some() {
-      Ok(self.result_value.unwrap())
-    } else {
-      Err(
+    match self.result_value {
+      Some(res) => Ok(res),
+      None => Err(
         thrift::Error::Application(
           ApplicationError::new(
             ApplicationErrorKind::MissingResult,
             "no result received for ExtensionManagerExtensions"
           )
         )
-      )
+      ),
     }
   }
   fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<ExtensionManagerExtensionsResult> {
@@ -1816,17 +1832,16 @@ struct ExtensionManagerOptionsResult {
 
 impl ExtensionManagerOptionsResult {
   fn ok_or(self) -> thrift::Result<InternalOptionList> {
-    if self.result_value.is_some() {
-      Ok(self.result_value.unwrap())
-    } else {
-      Err(
+    match self.result_value {
+      Some(res) => Ok(res),
+      None => Err(
         thrift::Error::Application(
           ApplicationError::new(
             ApplicationErrorKind::MissingResult,
             "no result received for ExtensionManagerOptions"
           )
         )
-      )
+      ),
     }
   }
   fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<ExtensionManagerOptionsResult> {
@@ -1947,8 +1962,8 @@ impl ExtensionManagerRegisterExtensionArgs {
     verify_required_field_exists("ExtensionManagerRegisterExtensionArgs.info", &f_1)?;
     verify_required_field_exists("ExtensionManagerRegisterExtensionArgs.registry", &f_2)?;
     let ret = ExtensionManagerRegisterExtensionArgs {
-      info: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      registry: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      info: f_1.ok_or_thrift_err(|| "auto-generated code should have checked for presence of required fields".to_string())?,
+      registry: f_2.ok_or_thrift_err(|| "auto-generated code should have checked for presence of required fields".to_string())?,
     };
     Ok(ret)
   }
@@ -1996,18 +2011,7 @@ struct ExtensionManagerRegisterExtensionResult {
 
 impl ExtensionManagerRegisterExtensionResult {
   fn ok_or(self) -> thrift::Result<ExtensionStatus> {
-    if self.result_value.is_some() {
-      Ok(self.result_value.unwrap())
-    } else {
-      Err(
-        thrift::Error::Application(
-          ApplicationError::new(
-            ApplicationErrorKind::MissingResult,
-            "no result received for ExtensionManagerRegisterExtension"
-          )
-        )
-      )
-    }
+    self.result_value.ok_or_thrift_err(|| "no result received for ExtensionManagerRegisterExtension".to_string())
   }
   fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<ExtensionManagerRegisterExtensionResult> {
     i_prot.read_struct_begin()?;
@@ -2081,7 +2085,7 @@ impl ExtensionManagerDeregisterExtensionArgs {
     i_prot.read_struct_end()?;
     verify_required_field_exists("ExtensionManagerDeregisterExtensionArgs.uuid", &f_1)?;
     let ret = ExtensionManagerDeregisterExtensionArgs {
-      uuid: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      uuid: f_1.ok_or_thrift_err(|| "auto-generated code should have checked for presence of required fields".to_string())?,
     };
     Ok(ret)
   }
@@ -2107,18 +2111,7 @@ struct ExtensionManagerDeregisterExtensionResult {
 
 impl ExtensionManagerDeregisterExtensionResult {
   fn ok_or(self) -> thrift::Result<ExtensionStatus> {
-    if self.result_value.is_some() {
-      Ok(self.result_value.unwrap())
-    } else {
-      Err(
-        thrift::Error::Application(
-          ApplicationError::new(
-            ApplicationErrorKind::MissingResult,
-            "no result received for ExtensionManagerDeregisterExtension"
-          )
-        )
-      )
-    }
+    self.result_value.ok_or_thrift_err(|| "no result received for ExtensionManagerDeregisterExtension".to_string())
   }
   fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<ExtensionManagerDeregisterExtensionResult> {
     i_prot.read_struct_begin()?;
@@ -2192,7 +2185,7 @@ impl ExtensionManagerQueryArgs {
     i_prot.read_struct_end()?;
     verify_required_field_exists("ExtensionManagerQueryArgs.sql", &f_1)?;
     let ret = ExtensionManagerQueryArgs {
-      sql: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      sql: f_1.ok_or_thrift_err(|| "auto-generated code should have checked for presence of required fields".to_string())?,
     };
     Ok(ret)
   }
@@ -2218,18 +2211,7 @@ struct ExtensionManagerQueryResult {
 
 impl ExtensionManagerQueryResult {
   fn ok_or(self) -> thrift::Result<ExtensionResponse> {
-    if self.result_value.is_some() {
-      Ok(self.result_value.unwrap())
-    } else {
-      Err(
-        thrift::Error::Application(
-          ApplicationError::new(
-            ApplicationErrorKind::MissingResult,
-            "no result received for ExtensionManagerQuery"
-          )
-        )
-      )
-    }
+    self.result_value.ok_or_thrift_err(|| "no result received for ExtensionManagerQuery".to_string())
   }
   fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<ExtensionManagerQueryResult> {
     i_prot.read_struct_begin()?;
@@ -2303,7 +2285,7 @@ impl ExtensionManagerGetQueryColumnsArgs {
     i_prot.read_struct_end()?;
     verify_required_field_exists("ExtensionManagerGetQueryColumnsArgs.sql", &f_1)?;
     let ret = ExtensionManagerGetQueryColumnsArgs {
-      sql: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      sql: f_1.ok_or_thrift_err(|| "auto-generated code should have checked for presence of required fields".to_string())?,
     };
     Ok(ret)
   }
@@ -2329,18 +2311,7 @@ struct ExtensionManagerGetQueryColumnsResult {
 
 impl ExtensionManagerGetQueryColumnsResult {
   fn ok_or(self) -> thrift::Result<ExtensionResponse> {
-    if self.result_value.is_some() {
-      Ok(self.result_value.unwrap())
-    } else {
-      Err(
-        thrift::Error::Application(
-          ApplicationError::new(
-            ApplicationErrorKind::MissingResult,
-            "no result received for ExtensionManagerGetQueryColumns"
-          )
-        )
-      )
-    }
+    self.result_value.ok_or_thrift_err(|| "no result received for ExtensionManagerGetQueryColumns".to_string())
   }
   fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<ExtensionManagerGetQueryColumnsResult> {
     i_prot.read_struct_begin()?;
