@@ -1,18 +1,20 @@
 use crate::_osquery as osquery;
+use crate::_osquery::{ExtensionPluginRequest, ExtensionResponse};
+use crate::plugin::table::TablePluginWrapper;
 use crate::plugin::Table;
 use crate::plugin::{OsqueryPlugin, Registry};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub enum Plugin {
     Config,
     Logger,
-    Table(Arc<dyn Table>),
+    Table(TablePluginWrapper),
 }
 
 impl Plugin {
-    pub fn table<T: Table>(t: T) -> Self {
-        Plugin::Table(Arc::new(t))
+    pub fn table<T: Table + 'static>(t: T) -> Self {
+        Plugin::Table(TablePluginWrapper::new(Arc::new(Mutex::new(t))))
     }
 
     pub fn config() -> Self {
@@ -76,6 +78,42 @@ impl OsqueryPlugin for Plugin {
                 todo!()
             }
             Plugin::Table(t) => t.generate(req),
+        }
+    }
+
+    fn update(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
+        match self {
+            Plugin::Config => {
+                todo!()
+            }
+            Plugin::Logger => {
+                todo!()
+            }
+            Plugin::Table(t) => t.update(req),
+        }
+    }
+
+    fn delete(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
+        match self {
+            Plugin::Config => {
+                todo!()
+            }
+            Plugin::Logger => {
+                todo!()
+            }
+            Plugin::Table(t) => t.delete(req),
+        }
+    }
+
+    fn insert(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
+        match self {
+            Plugin::Config => {
+                todo!()
+            }
+            Plugin::Logger => {
+                todo!()
+            }
+            Plugin::Table(t) => t.insert(req),
         }
     }
 

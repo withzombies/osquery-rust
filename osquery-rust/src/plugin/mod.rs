@@ -9,6 +9,7 @@ pub use _enums::registry::Registry;
 pub use _traits::osquery_plugin::OsqueryPlugin;
 
 pub use table::column_def::ColumnDef;
+pub use table::column_def::ColumnOptions;
 pub use table::column_def::ColumnType;
 pub use table::query_constraint::QueryConstraints;
-pub use table::Table;
+pub use table::{create_readonly_response, Table};

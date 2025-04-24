@@ -1,66 +1,21 @@
+mod cli;
+
 use clap::crate_name;
 use clap::Parser;
-use osquery_rust::plugin::{ColumnDef, ColumnType, Plugin, Table};
+use osquery_rust::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, Table};
 use osquery_rust::prelude::*;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Error, ErrorKind};
 
+use crate::cli::Args;
 use regex::Regex;
-
-#[derive(clap::Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
-#[clap(arg_required_else_help = true)]
-#[clap(group(
-  clap::ArgGroup::new("mode")
-    .required(true)
-    .multiple(false)
-    .args(&["standalone", "socket"]),
-))]
-#[clap(group(
-  clap::ArgGroup::new("mode::socket")
-    .required(false)
-    .multiple(true)
-    .conflicts_with("standalone")
-    .args(&["interval", "timeout"]),
-))]
-pub struct Args {
-    // Operating in standalone mode
-    #[clap(long)]
-    standalone: bool,
-
-    // Operating in socket mode
-    #[clap(long, value_name = "PATH_TO_SOCKET")]
-    socket: Option<String>,
-
-    /// Delay in seconds between connectivity checks.
-    #[clap(long, default_value_t = 30)]
-    interval: u32,
-
-    /// Time in seconds to wait for autoloaded extensions until connection times out.
-    #[clap(long, default_value_t = 30)]
-    timeout: u32,
-
-    /// Enable verbose informational messages.
-    #[clap(long)]
-    verbose: bool,
-}
-
-impl Args {
-    pub fn standalone(&self) -> bool {
-        self.standalone
-    }
-
-    pub fn socket(&self) -> Option<String> {
-        self.socket.clone()
-    }
-}
 
 #[derive(Debug, Clone)]
 struct ProcMemInfoTable {}
 
 impl Table for ProcMemInfoTable {
-    fn plugin_name(&self) -> String {
+    fn name(&self) -> String {
         "proc_meminfo".to_string()
     }
 
@@ -97,6 +52,7 @@ impl Table for ProcMemInfoTable {
                 columns.push(ColumnDef::new(
                     s.to_lowercase().as_str(),
                     ColumnType::BigInt,
+                    ColumnOptions::DEFAULT,
                 ));
             }
         }
@@ -107,6 +63,18 @@ impl Table for ProcMemInfoTable {
     fn select(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
         let resp = vec![self.proc_meminfo()];
         ExtensionResponse::new(ExtensionStatus::default(), resp)
+    }
+
+    fn update(&mut self, _req: ExtensionPluginRequest) -> ExtensionResponse {
+        todo!()
+    }
+
+    fn delete(&mut self, _id: u64) -> Result<(), Error> {
+        todo!()
+    }
+
+    fn insert(&mut self, _req: ExtensionPluginRequest) -> ExtensionResponse {
+        todo!()
     }
 }
 
@@ -156,7 +124,7 @@ fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
     // todo: handle non existing socket gracefully
-    if !args.standalone {
+    if !args.standalone() {
         let Some(socket) = args.socket() else {
             return Err(Error::new(ErrorKind::InvalidInput, "No socket provided"));
         };

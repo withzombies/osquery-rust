@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 use strum_macros::Display;
 
 // ColumnDef defines a column used in a table plugin.
@@ -6,6 +7,7 @@ use strum_macros::Display;
 pub struct ColumnDef {
     name: String,
     t: ColumnType,
+    o: ColumnOptions,
 }
 
 #[derive(Clone, Display, Debug)]
@@ -21,11 +23,25 @@ pub enum ColumnType {
     Double,
 }
 
+bitflags! {
+    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+    pub struct ColumnOptions: u32 {
+        const DEFAULT = 0;
+        const INDEX = 1;
+        const REQUIRED = 2;
+        const ADDITIONAL = 4;
+        const OPTIMIZED = 8;
+        const HIDDEN = 16;
+        const COLLATEBINARY = 32;
+    }
+}
+
 impl ColumnDef {
-    pub fn new(name: &str, t: ColumnType) -> Self {
+    pub fn new(name: &str, t: ColumnType, o: ColumnOptions) -> Self {
         ColumnDef {
             name: name.to_owned(),
             t,
+            o,
         }
     }
 
@@ -35,5 +51,9 @@ impl ColumnDef {
 
     pub(crate) fn t(&self) -> String {
         self.t.to_string()
+    }
+
+    pub(crate) fn o(&self) -> String {
+        self.o.bits().to_string()
     }
 }
