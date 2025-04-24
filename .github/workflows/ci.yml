@@ -1,29 +1,36 @@
-name: Rust CI with Osquery
+name: Rust CI
 
 on:
   push:
-    branches: ['**']
+    branches:
+      - main
   pull_request:
-    branches: ['**']
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 jobs:
-  build:
-
+  build-and-test:
+    name: Build and Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
 
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+      - name: Set up Rust Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          profile: minimal
           override: true
+          components: rustfmt, clippy
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -43,8 +50,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-build-
 
-      - name: Build
-        run: cargo build --verbose
 
-      - name: Run tests
-        run: cargo test --verbose
+      - name: Build Project
+        run: cargo build --release --verbose
+
+      - name: Run Tests
+        run: cargo test --all-features --verbose
