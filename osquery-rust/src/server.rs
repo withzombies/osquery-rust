@@ -48,7 +48,7 @@ pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static> {
     started: bool,
 }
 
-impl<P: OsqueryPlugin + Clone + Send + Sync + 'static> Server<P> {
+impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
     pub fn new(name: Option<&str>, socket_path: &str) -> Result<Self, Error> {
         let mut reg: HashMap<String, HashMap<String, Plugin>> = HashMap::new();
         for var in Registry::VARIANTS {

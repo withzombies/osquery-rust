@@ -1,13 +1,27 @@
 use crate::_osquery as osquery;
-use crate::_osquery::TExtensionSyncClient;
 use crate::plugin::Table;
 use crate::plugin::{OsqueryPlugin, Registry};
+use std::sync::Arc;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Plugin {
     Config,
     Logger,
-    Table(Table),
+    Table(Arc<dyn Table>),
+}
+
+impl Plugin {
+    pub fn table<T: Table>(t: T) -> Self {
+        Plugin::Table(Arc::new(t))
+    }
+
+    pub fn config() -> Self {
+        Plugin::Config
+    }
+
+    pub fn logger() -> Self {
+        Plugin::Logger
+    }
 }
 
 impl OsqueryPlugin for Plugin {

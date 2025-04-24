@@ -1,11 +1,8 @@
+use crate::_osquery as osquery;
 use std::io::Error;
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
-
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
-
-use crate::_osquery as osquery;
-use crate::_osquery::TExtensionManagerSyncClient;
 
 pub struct Client {
     client: osquery::ExtensionManagerSyncClient<
