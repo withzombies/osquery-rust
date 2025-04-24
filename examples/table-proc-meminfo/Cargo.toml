@@ -28,3 +28,4 @@ ok_expect = "deny"
 clap = { version = "^3", features = ["cargo", "derive"] }
 regex = { version = "1.10.4" }
 osquery-rust = { path = "../../osquery-rust" }
+env_logger = "0.11.8"

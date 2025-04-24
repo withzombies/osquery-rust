@@ -1,5 +1,7 @@
-use crate::_osquery as osquery;
+use crate::_osquery::ExtensionStatus;
 use crate::plugin::Registry;
+use crate::{ExtensionPluginResponse, _osquery as osquery};
+use std::collections::BTreeMap;
 
 pub trait OsqueryPlugin {
     // Name is the name used to refer to the plugin (eg. the name of the
@@ -21,7 +23,23 @@ pub trait OsqueryPlugin {
     // Call requests the plugin to perform its defined behavior, returning
     // a response containing the result.
     // Request: {"action": "generate", "context": "{\"constraints\":[{\"name\":\"h1\",\"list\":[],\"affinity\":\"TEXT\"},{\"name\":\"h2\",\"list\":[],\"affinity\":\"INTEGER\"},{\"name\":\"h3\",\"list\":[],\"affinity\":\"TEXT\"}],\"colsUsed\":[\"h3\",\"h2\",\"h1\"],\"colsUsedBitset\":7}"}
-    fn call(&self, req: osquery::ExtensionPluginRequest) -> osquery::ExtensionResponse;
+    fn generate(&self, req: osquery::ExtensionPluginRequest) -> osquery::ExtensionResponse;
+
+    fn update(&self, req: osquery::ExtensionPluginRequest) -> osquery::ExtensionResponse {
+        let mut resp = BTreeMap::<String, String>::new();
+        resp.insert("status".to_string(), "readonly".to_string());
+        osquery::ExtensionResponse::new(ExtensionStatus::new(1, None, None), vec![resp])
+    }
+    fn delete(&self, req: osquery::ExtensionPluginRequest) -> osquery::ExtensionResponse {
+        let mut resp = BTreeMap::<String, String>::new();
+        resp.insert("status".to_string(), "readonly".to_string());
+        osquery::ExtensionResponse::new(ExtensionStatus::new(1, None, None), vec![resp])
+    }
+    fn insert(&self, req: osquery::ExtensionPluginRequest) -> osquery::ExtensionResponse {
+        let mut resp = BTreeMap::<String, String>::new();
+        resp.insert("status".to_string(), "readonly".to_string());
+        osquery::ExtensionResponse::new(ExtensionStatus::new(1, None, None), vec![resp])
+    }
 
     // Shutdown alerts the plugin to stop.
     fn shutdown(&self);

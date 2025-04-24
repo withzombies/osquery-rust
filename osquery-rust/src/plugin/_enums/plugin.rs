@@ -1,4 +1,5 @@
 use crate::_osquery as osquery;
+use crate::_osquery::TExtensionSyncClient;
 use crate::plugin::Table;
 use crate::plugin::{OsqueryPlugin, Registry};
 
@@ -52,7 +53,7 @@ impl OsqueryPlugin for Plugin {
 
     // Call requests the plugin to perform its defined behavior, returning
     // a response containing the result.
-    fn call(&self, req: osquery::ExtensionPluginRequest) -> osquery::ExtensionResponse {
+    fn generate(&self, req: osquery::ExtensionPluginRequest) -> osquery::ExtensionResponse {
         match self {
             Plugin::Config => {
                 todo!()
@@ -60,12 +61,20 @@ impl OsqueryPlugin for Plugin {
             Plugin::Logger => {
                 todo!()
             }
-            Plugin::Table(t) => t.call(req),
+            Plugin::Table(t) => t.generate(req),
         }
     }
 
     // Shutdown notifies the plugin to stop.
     fn shutdown(&self) {
-        todo!()
+        match self {
+            Plugin::Config => {
+                todo!()
+            }
+            Plugin::Logger => {
+                todo!()
+            }
+            Plugin::Table(t) => t.shutdown(),
+        }
     }
 }

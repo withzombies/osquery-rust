@@ -67,11 +67,11 @@ impl OsqueryPlugin for Table {
         todo!()
     }
 
-    fn call(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
+    fn generate(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
         (self.func)(req)
     }
 
     fn shutdown(&self) {
-        todo!()
+        log::trace!("Shutting down plugin: {}", self.name());
     }
 }

@@ -71,7 +71,7 @@ impl osquery::TExtensionManagerSyncClient for Client {
 //
 impl osquery::TExtensionSyncClient for Client {
     fn ping(&mut self) -> thrift::Result<osquery::ExtensionStatus> {
-        Ok(osquery::ExtensionStatus::new(0, "OK".to_string(), Some(0)))
+        self.client.ping()
     }
 
     fn call(

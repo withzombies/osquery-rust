@@ -199,33 +199,34 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
     ) -> thrift::Result<osquery::ExtensionResponse> {
         let ok = osquery::ExtensionStatus::default();
 
-        //log::trace!("Registry: {}", registry);
-        //log::trace!("Item: {}", item);
-        //log::trace!("Request: {:?}", request);
+        log::trace!("Registry: {}", registry);
+        log::trace!("Item: {}", item);
+        log::trace!("Request: {:?}", request);
 
         match request.get("action") {
             Some(action) => {
+                log::trace!("Action: {}", action);
+                let plugin = self
+                    .registry
+                    .get(registry.as_str())
+                    .ok_or_thrift_err(|| {
+                        format!(
+                            "Failed to get registry:{} from registries",
+                            registry.as_str()
+                        )
+                    })?
+                    .get(item.as_str())
+                    .ok_or_thrift_err(|| {
+                        format!(
+                            "Failed to item:{} from registry:{}",
+                            item.as_str(),
+                            registry.as_str()
+                        )
+                    })?;
+
                 match action.as_str() {
                     "columns" => {
-                        let plugin = self
-                            .registry
-                            .get(registry.as_str())
-                            .ok_or_thrift_err(|| {
-                                format!(
-                                    "Failed to get registry:{} from registries",
-                                    registry.as_str()
-                                )
-                            })?
-                            .get(item.as_str())
-                            .ok_or_thrift_err(|| {
-                                format!(
-                                    "Failed to item:{} from registry:{}",
-                                    item.as_str(),
-                                    registry.as_str()
-                                )
-                            })?;
                         let resp = plugin.routes();
-
                         Ok(osquery::ExtensionResponse::new(ok, resp))
 
                         /*
@@ -236,26 +237,10 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
                         }
                         */
                     }
-                    "generate" => {
-                        let plugin = self
-                            .registry
-                            .get(registry.as_str())
-                            .ok_or_thrift_err(|| {
-                                format!(
-                                    "Failed to get registry:{} from registries",
-                                    registry.as_str()
-                                )
-                            })?
-                            .get(item.as_str())
-                            .ok_or_thrift_err(|| {
-                                format!(
-                                    "Failed to item:{} from registry:{}",
-                                    item.as_str(),
-                                    registry.as_str()
-                                )
-                            })?;
-                        Ok(plugin.call(request))
-                    }
+                    "generate" => Ok(plugin.generate(request)),
+                    "update" => Ok(plugin.update(request)),
+                    "delete" => Ok(plugin.delete(request)),
+                    "insert" => Ok(plugin.insert(request)),
                     _ => {
                         todo!("unknown action {action}")
                     }
@@ -270,6 +255,12 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
 
     fn handle_shutdown(&self) -> thrift::Result<()> {
         log::trace!("Shutdown");
+
+        self.registry.iter().for_each(|(_, v)| {
+            v.iter().for_each(|(_, p)| {
+                p.shutdown();
+            });
+        });
 
         Ok(())
     }

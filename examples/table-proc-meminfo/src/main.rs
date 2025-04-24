@@ -58,6 +58,8 @@ impl Args {
 }
 
 fn main() -> std::io::Result<()> {
+    env_logger::init();
+
     let args = Args::parse();
 
     // todo: handle non existing socket gracefully
