@@ -2,9 +2,7 @@ mod cli;
 
 use crate::cli::Args;
 use clap::{Parser, crate_name};
-use osquery_rust::plugin::{
-    ColumnDef, ColumnOptions, ColumnType, Plugin, Table, create_readonly_response,
-};
+use osquery_rust::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, Table};
 use osquery_rust::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus, Server};
 use std::collections::BTreeMap;
 use std::io::{Error, ErrorKind};
@@ -53,20 +51,20 @@ impl Table for WriteableTable {
         ExtensionResponse::new(ExtensionStatus::default(), resp)
     }
 
-    fn update(&mut self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-        create_readonly_response()
+    fn update(&mut self, _rowid: u64, _req: ExtensionPluginRequest) -> Result<(), std::io::Error> {
+        Ok(())
     }
 
-    fn delete(&mut self, id: u64) -> Result<(), Error> {
-        log::info!("deleting item: {}", id);
+    fn delete(&mut self, rowid: u64) -> Result<(), Error> {
+        log::info!("deleting item: {}", rowid);
 
-        self.items.remove(id as usize);
+        self.items.remove(rowid as usize);
 
         Ok(())
     }
 
     fn insert(&mut self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-        create_readonly_response()
+        todo!()
     }
 }
 

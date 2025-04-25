@@ -2,7 +2,7 @@ mod cli;
 
 use clap::crate_name;
 use clap::Parser;
-use osquery_rust::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, Table};
+use osquery_rust::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, ReadOnlyTable, Table};
 use osquery_rust::prelude::*;
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -14,7 +14,7 @@ use regex::Regex;
 #[derive(Debug, Clone)]
 struct ProcMemInfoTable {}
 
-impl Table for ProcMemInfoTable {
+impl ReadOnlyTable for ProcMemInfoTable {
     fn name(&self) -> String {
         "proc_meminfo".to_string()
     }
@@ -63,18 +63,6 @@ impl Table for ProcMemInfoTable {
     fn select(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
         let resp = vec![self.proc_meminfo()];
         ExtensionResponse::new(ExtensionStatus::default(), resp)
-    }
-
-    fn update(&mut self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-        todo!()
-    }
-
-    fn delete(&mut self, _id: u64) -> Result<(), Error> {
-        todo!()
-    }
-
-    fn insert(&mut self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-        todo!()
     }
 }
 
@@ -131,7 +119,7 @@ fn main() -> std::io::Result<()> {
 
         let mut manager = Server::new(Some(crate_name!()), socket.as_str())?;
 
-        manager.register_plugin(Plugin::table(ProcMemInfoTable {}));
+        manager.register_plugin(Plugin::readonly_table(ProcMemInfoTable {}));
 
         manager.run().map_err(Error::other)?;
     } else {

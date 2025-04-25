@@ -1,20 +1,23 @@
 use crate::_osquery as osquery;
 use crate::_osquery::{ExtensionPluginRequest, ExtensionResponse};
-use crate::plugin::table::TablePluginWrapper;
+use crate::plugin::table::{ReadOnlyTable, TablePlugin};
 use crate::plugin::Table;
 use crate::plugin::{OsqueryPlugin, Registry};
-use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub enum Plugin {
     Config,
     Logger,
-    Table(TablePluginWrapper),
+    Table(TablePlugin),
 }
 
 impl Plugin {
     pub fn table<T: Table + 'static>(t: T) -> Self {
-        Plugin::Table(TablePluginWrapper::new(Arc::new(Mutex::new(t))))
+        Plugin::Table(TablePlugin::from_writeable_table(t))
+    }
+
+    pub fn readonly_table<T: ReadOnlyTable + 'static>(t: T) -> Self {
+        Plugin::Table(TablePlugin::from_readonly_table(t))
     }
 
     pub fn config() -> Self {
