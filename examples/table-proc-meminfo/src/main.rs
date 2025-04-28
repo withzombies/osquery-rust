@@ -2,7 +2,7 @@ mod cli;
 
 use clap::crate_name;
 use clap::Parser;
-use osquery_rust::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, ReadOnlyTable, Table};
+use osquery_rust::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, ReadOnlyTable};
 use osquery_rust::prelude::*;
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -60,9 +60,13 @@ impl ReadOnlyTable for ProcMemInfoTable {
         columns
     }
 
-    fn select(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
+    fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
         let resp = vec![self.proc_meminfo()];
         ExtensionResponse::new(ExtensionStatus::default(), resp)
+    }
+
+    fn shutdown(&self) {
+        println!("Shutting down");
     }
 }
 
