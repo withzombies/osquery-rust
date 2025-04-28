@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "osquery-rust",
-    "examples/table-proc-meminfo", "examples/writeable-table",
+    "examples/table-proc-meminfo", "examples/writeable-table", "examples/two-tables",
 ]
 
 resolver = "2"

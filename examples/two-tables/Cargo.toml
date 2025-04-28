@@ -1,0 +1,24 @@
+[package]
+name = "two-tables"
+version = "0.1.0"
+edition = "2024"
+
+[lints.clippy]
+all = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+unreachable = "deny"
+undocumented_unsafe_blocks = "deny"
+unwrap_in_result = "deny"
+ok_expect = "deny"
+
+[dependencies]
+# Clap version string according to Clap compatibility policy
+clap = { version = "^3", features = ["cargo", "derive"] }
+regex = { version = "1.10.4" }
+osquery-rust = { path = "../../osquery-rust" }
+env_logger = "0.11.8"
+log = "0.4.27"
+serde_json = "1.0.140"
