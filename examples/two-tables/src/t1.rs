@@ -23,7 +23,7 @@ impl ReadOnlyTable for Table1 {
         ]
     }
 
-    fn generate(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
+    fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
         let resp = BTreeMap::from([
             ("left".to_string(), "left".to_string()),
             ("right".to_string(), "right".to_string()),

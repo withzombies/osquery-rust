@@ -1,6 +1,5 @@
 use osquery_rust::plugin::{
-    ColumnDef, ColumnOptions, ColumnType, DeleteResult, InsertResult, ReadOnlyTable, Table,
-    UpdateResult,
+    ColumnDef, ColumnOptions, ColumnType, DeleteResult, InsertResult, Table, UpdateResult,
 };
 use osquery_rust::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus};
 use serde_json::Value;
@@ -27,7 +26,7 @@ impl Table for Table2 {
         ]
     }
 
-    fn generate(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
+    fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
         let resp = BTreeMap::from([
             ("top".to_string(), "top".to_string()),
             ("bottom".to_string(), "bottom".to_string()),
@@ -36,15 +35,15 @@ impl Table for Table2 {
         ExtensionResponse::new(ExtensionStatus::default(), vec![resp])
     }
 
-    fn update(&mut self, rowid: u64, row: &Value) -> UpdateResult {
+    fn update(&mut self, _rowid: u64, _row: &Value) -> UpdateResult {
         UpdateResult::Constraint
     }
 
-    fn delete(&mut self, rowid: u64) -> DeleteResult {
+    fn delete(&mut self, _rowid: u64) -> DeleteResult {
         DeleteResult::Err("Not yet implemented".to_string())
     }
 
-    fn insert(&mut self, auto_rowid: bool, row: &Value) -> InsertResult {
+    fn insert(&mut self, _auto_rowid: bool, _row: &Value) -> InsertResult {
         InsertResult::Constraint
     }
 

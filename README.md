@@ -49,12 +49,8 @@ This project contributed the support for Unix Domain Sockets to [Apache Thrift's
 
 # Additional resources
 
-- Homepage polarlabs: [polarlabs.io](https://www.polarlabs.io)
-- Tutorial: [osquery-rust tutorial](https://github.com/polarlabs/osquery-rust/tree/main/tutorial)
-- Examples: [osquery-rust by example](https://github.com/polarlabs/osquery-rust/tree/main/examples)
-- Crate: [crates.io/osquery-rust](https://crates.io/crates/osquery-rust)
-- Lib documentation: [docs.rs/osquery-rust](https://docs.rs/osquery-rust/)
-- Docker: [images @ docker hub](https://hub.docker.com/r/polarlabs/osquery)
+- Tutorial: [osquery-rust tutorial](https://github.com/withzombies/osquery-rust/tree/main/tutorial)
+- Examples: [osquery-rust by example](https://github.com/withzombies/osquery-rust/tree/main/examples)
 
 # Links
 
