@@ -1,8 +1,9 @@
 [package]
-name = "osquery-rust"
-version = "0.1.4"
+name = "osquery-rust-ng"
+version = "1.0.0"
 authors = [
     "Tobias Mucke <tobias.mucke@gmail.com>",
+    "Ryan Stortz <ryan@withzombies.com>"
 ]
 description = "Rust bindings for Osquery"
 keywords = ["osquery", "binding"]
@@ -10,10 +11,10 @@ categories = [
     "api-bindings",
     "command-line-utilities",
 ]
-homepage = "https://github.com/polarlabs"
-repository = "https://github.com/polarlabs/osquery-rust"
+homepage = "https://github.com/withzombies"
+repository = "https://github.com/withzombies/osquery-rust"
 readme = "README.md"
-documentation = "https://docs.rs/osquery-rust"
+documentation = "https://docs.rs/osquery-rust-ng"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
@@ -29,19 +30,15 @@ unwrap_in_result = "deny"
 ok_expect = "deny"
 
 [lib]
-name = "osquery_rust"
+name = "osquery_rust_ng"
 path = "src/lib.rs"
 
 [dependencies]
-# Clap version string according to Clap compatibility policy
 clap = { version = "^4.5.4", features = ["cargo", "derive"] }
-
-strum = { version = "0.26.2" }
-strum_macros = { version = "0.26.2" }
-thrift = { version = "0.17.0" }
-log = "0.4.27"
-env_logger = "0.11.8"
-bitflags = "2.9.0"
-enum_dispatch = "0.3.13"
-serde = "1.0.219"
-serde_json = "1.0.140"
+strum = { version = "^0.26.2" }
+strum_macros = { version = "^0.26.2" }
+thrift = { version = "^0.17.0" }
+log = "^0.4.27"
+bitflags = "^2.9.0"
+enum_dispatch = "^0.3.13"
+serde_json = "^1.0.140"

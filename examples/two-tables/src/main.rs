@@ -6,8 +6,8 @@ use crate::cli::Args;
 use crate::t1::Table1;
 use crate::t2::Table2;
 use clap::{Parser, crate_name};
-use osquery_rust::Server;
-use osquery_rust::plugin::Plugin;
+use osquery_rust_ng::Server;
+use osquery_rust_ng::plugin::Plugin;
 use std::io::{Error, ErrorKind};
 
 fn main() -> std::io::Result<()> {

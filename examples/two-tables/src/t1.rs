@@ -1,5 +1,5 @@
-use osquery_rust::plugin::{ColumnDef, ColumnOptions, ColumnType, ReadOnlyTable};
-use osquery_rust::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus};
+use osquery_rust_ng::plugin::{ColumnDef, ColumnOptions, ColumnType, ReadOnlyTable};
+use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus};
 use std::collections::BTreeMap;
 use std::process::exit;
 

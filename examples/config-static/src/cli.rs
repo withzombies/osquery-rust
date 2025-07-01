@@ -5,7 +5,7 @@ use clap::Parser;
     author,
     version,
     about,
-    name = "config-file-events",
+    name = "config-static",
     long_about = "A config plugin that provides a static configuration enabling file events monitoring on /tmp"
 )]
 #[command(arg_required_else_help = true)]

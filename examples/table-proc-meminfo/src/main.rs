@@ -2,8 +2,8 @@ mod cli;
 
 use clap::crate_name;
 use clap::Parser;
-use osquery_rust::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, ReadOnlyTable};
-use osquery_rust::prelude::*;
+use osquery_rust_ng::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, ReadOnlyTable};
+use osquery_rust_ng::prelude::*;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Error, ErrorKind};

@@ -123,7 +123,6 @@ osquery-rust/                    # Workspace root
 │   ├── table-proc-meminfo/    # Linux /proc/meminfo parser
 │   ├── writeable-table/       # CRUD operations demo
 │   └── two-tables/            # Multiple table registration
-└── docker/                    # Testing environments
 ```
 
 ## Important Development Notes

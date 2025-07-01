@@ -2,8 +2,8 @@ mod cli;
 
 use clap::Parser;
 use log::info;
-use osquery_rust::plugin::{LogSeverity, LogStatus, LoggerPlugin, Plugin};
-use osquery_rust::prelude::*;
+use osquery_rust_ng::plugin::{LogSeverity, LogStatus, LoggerPlugin, Plugin};
+use osquery_rust_ng::prelude::*;
 use std::sync::Mutex;
 use syslog::{Facility, Formatter3164, LoggerBackend};
 

@@ -7,10 +7,9 @@ edition = "2021"
 name = "logger-file"
 path = "src/main.rs"
 
-
 [dependencies]
-osquery-rust = { path = "../../osquery-rust" }
-clap = { version = "4", features = ["derive"] }
-env_logger = "0.11"
-log = "0.4"
-chrono = "0.4"
+osquery-rust-ng = { path = "../../osquery-rust" }
+clap = { version = "^4.5.40", features = ["derive"] }
+env_logger = "^0.11"
+log = "^0.4.27"
+chrono = "^0.4"

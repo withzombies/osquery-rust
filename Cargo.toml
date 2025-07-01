@@ -3,7 +3,7 @@ members = [
     "osquery-rust",
     "examples/table-proc-meminfo", "examples/writeable-table", "examples/two-tables",
     "examples/logger-file", "examples/logger-syslog", "examples/config-file",
-    "examples/config-file-events",
+    "examples/config-static",
 ]
 
 resolver = "2"

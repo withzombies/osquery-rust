@@ -24,8 +24,8 @@ unwrap_in_result = "deny"
 ok_expect = "deny"
 
 [dependencies]
-# Clap version string according to Clap compatibility policy
-clap = { version = "^3", features = ["cargo", "derive"] }
-regex = { version = "1.10.4" }
-osquery-rust = { path = "../../osquery-rust" }
-env_logger = "0.11.8"
+osquery-rust-ng = { path = "../../osquery-rust" }
+clap = { version = "^4.5.40", features = ["derive"] }
+env_logger = "^0.11"
+log = "^0.4.27"
+regex = "^1.11.1"

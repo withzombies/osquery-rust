@@ -3,15 +3,15 @@ mod cli;
 use clap::Parser;
 use cli::Args;
 use log::info;
-use osquery_rust::plugin::{ConfigPlugin, Plugin};
-use osquery_rust::prelude::*;
+use osquery_rust_ng::plugin::{ConfigPlugin, Plugin};
+use osquery_rust_ng::prelude::*;
 use std::collections::HashMap;
 
 struct FileEventsConfigPlugin;
 
 impl ConfigPlugin for FileEventsConfigPlugin {
     fn name(&self) -> String {
-        "file_events_config".to_string()
+        "static_config".to_string()
     }
 
     fn gen_config(&self) -> Result<HashMap<String, String>, String> {
@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Create and run the server
-    let mut server = Server::new(Some("file_events_config"), &args.socket)?;
+    let mut server = Server::new(Some("static_config"), &args.socket)?;
     server.register_plugin(Plugin::config(FileEventsConfigPlugin));
 
     if args.verbose {

@@ -7,8 +7,8 @@
 //! # Example
 //!
 //! ```no_run
-//! use osquery_rust::plugin::{LoggerPlugin, LogStatus, Plugin};
-//! use osquery_rust::prelude::*;
+//! use osquery_rust_ng::plugin::{LoggerPlugin, LogStatus, Plugin};
+//! use osquery_rust_ng::prelude::*;
 //!
 //! struct ConsoleLogger;
 //!
@@ -64,7 +64,7 @@ use std::fmt;
 /// # Example
 ///
 /// ```no_run
-/// use osquery_rust::plugin::{LoggerPlugin, LogStatus, LogSeverity};
+/// use osquery_rust_ng::plugin::{LoggerPlugin, LogStatus, LogSeverity};
 ///
 /// struct MyLogger;
 ///

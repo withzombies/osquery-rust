@@ -1,7 +1,7 @@
-use osquery_rust::plugin::{
+use osquery_rust_ng::plugin::{
     ColumnDef, ColumnOptions, ColumnType, DeleteResult, InsertResult, Table, UpdateResult,
 };
-use osquery_rust::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus};
+use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::process::exit;

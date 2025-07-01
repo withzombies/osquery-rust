@@ -159,8 +159,8 @@ The existing `Server` implementation should work with minimal changes since it a
 
 ### Usage Example
 ```rust
-use osquery_rust::prelude::*;
-use osquery_rust::plugin::{ConfigPlugin, LoggerPlugin};
+use osquery_rust_ng::prelude::*;
+use osquery_rust_ng::plugin::{ConfigPlugin, LoggerPlugin};
 
 fn main() {
     let args = Args::parse();

@@ -16,7 +16,7 @@ By providing Rust bindings for Osquery this crate facilitates the implementation
 Clone the repository and build the workspace:
 
 ```bash
-git clone https://github.com/polarlabs/osquery-rust.git
+git clone https://github.com/withzombies/osquery-rust.git
 cd osquery-rust
 cargo build --workspace
 ```
@@ -34,7 +34,7 @@ The project uses a workspace structure with the main library and several example
 Here's a simple example of creating a table plugin that reports system uptime:
 
 ```rust
-use osquery_rust::prelude::*;
+use osquery_rust_ng::prelude::*;
 
 #[derive(Default)]
 struct UptimeTable;
@@ -99,7 +99,7 @@ See the [examples](examples/) directory for complete implementations.
 Logger plugins receive log data from osquery and can forward it to various backends:
 
 ```rust
-use osquery_rust::plugin::{LoggerPlugin, LogStatus};
+use osquery_rust_ng::plugin::{LoggerPlugin, LogStatus};
 
 struct MyLogger;
 
@@ -185,7 +185,7 @@ cargo test --workspace
 
 ### Reporting Issues
 
-Please report issues on [GitHub](https://github.com/polarlabs/osquery-rust/issues) with:
+Please report issues on [GitHub](https://github.com/withzombies/osquery-rust/issues) with:
 - osquery version
 - Rust version
 - Operating system
@@ -203,6 +203,8 @@ The project is organized as a Cargo workspace:
   - `two-tables/` - Multiple tables in one extension
   - `logger-file/` - File logger plugin
   - `logger-syslog/` - Syslog logger plugin
+  - `config-file/` - An example that loads a config from a json file
+  - `config-static/` - An example that provides a static config
 
 ## Additional Resources
 
