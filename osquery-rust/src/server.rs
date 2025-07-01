@@ -183,95 +183,35 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
         Ok(osquery::ExtensionStatus::default())
     }
 
-    ///
-    /// Called with ExtensionPluginRequest, which is a type alias for BTreeMap<String, String>,
-    /// First string is main command, e.g. action
-    /// Second string is sub command, e.g. columns
-    ///
-    /// Dispatches requests to the plugin defined by registry + item
-    /// Standard table actions: columns, generate, update, delete, insert
-    /// Plugin-specific actions (e.g., genConfig, genPack for config plugins) are
-    /// passed through to the plugin's generate method
-    ///
     fn handle_call(
         &self,
         registry: String,
         item: String,
         request: osquery::ExtensionPluginRequest,
     ) -> thrift::Result<osquery::ExtensionResponse> {
-        let ok = osquery::ExtensionStatus::default();
-
         log::trace!("Registry: {registry}");
         log::trace!("Item: {item}");
         log::trace!("Request: {request:?}");
 
-        match request.get("action") {
-            Some(action) => {
-                log::trace!("Action: {action}");
-                let plugin = self
-                    .registry
-                    .get(registry.as_str())
-                    .ok_or_thrift_err(|| {
-                        format!(
-                            "Failed to get registry:{} from registries",
-                            registry.as_str()
-                        )
-                    })?
-                    .get(item.as_str())
-                    .ok_or_thrift_err(|| {
-                        format!(
-                            "Failed to item:{} from registry:{}",
-                            item.as_str(),
-                            registry.as_str()
-                        )
-                    })?;
+        let plugin = self
+            .registry
+            .get(registry.as_str())
+            .ok_or_thrift_err(|| {
+                format!(
+                    "Failed to get registry:{} from registries",
+                    registry.as_str()
+                )
+            })?
+            .get(item.as_str())
+            .ok_or_thrift_err(|| {
+                format!(
+                    "Failed to item:{} from registry:{}",
+                    item.as_str(),
+                    registry.as_str()
+                )
+            })?;
 
-                match action.as_str() {
-                    "columns" => {
-                        let resp = plugin.routes();
-                        Ok(osquery::ExtensionResponse::new(ok, resp))
-
-                        /*
-                        Plugin::Config => {}
-                        Plugin::Logger => {}
-                        Plugin::Table(t) => {
-                            resp = t.routes();
-                        }
-                        */
-                    }
-                    "generate" => Ok(plugin.generate(request)),
-                    "update" => Ok(plugin.update(request)),
-                    "delete" => Ok(plugin.delete(request)),
-                    "insert" => Ok(plugin.insert(request)),
-                    // For config plugins (genConfig, genPack) and other plugin-specific actions,
-                    // pass the request to the plugin's generate method
-                    _ => Ok(plugin.generate(request)),
-                }
-            }
-            None => {
-                // For logger plugins and other plugins that don't use "action"
-                // Just call generate directly with the request
-                let plugin = self
-                    .registry
-                    .get(registry.as_str())
-                    .ok_or_thrift_err(|| {
-                        format!(
-                            "Failed to get registry:{} from registries",
-                            registry.as_str()
-                        )
-                    })?
-                    .get(item.as_str())
-                    .ok_or_thrift_err(|| {
-                        format!(
-                            "Failed to get item:{} from registry:{}",
-                            item.as_str(),
-                            registry.as_str()
-                        )
-                    })?;
-
-                Ok(plugin.generate(request))
-            }
-        }
+        Ok(plugin.handle_call(request))
     }
 
     fn handle_shutdown(&self) -> thrift::Result<()> {

@@ -7,7 +7,7 @@ pub(crate) mod query_constraint;
 pub use query_constraint::QueryConstraints;
 
 use crate::_osquery::{
-    ExtensionPluginRequest, ExtensionPluginResponse, ExtensionResponse, ExtensionStatus,
+    osquery, ExtensionPluginRequest, ExtensionPluginResponse, ExtensionResponse, ExtensionStatus,
 };
 use crate::plugin::ExtensionResponseEnum::SuccessWithId;
 use crate::plugin::_enums::response::ExtensionResponseEnum;
@@ -85,6 +85,52 @@ impl OsqueryPlugin for TablePlugin {
         ExtensionStatus::default()
     }
 
+    fn handle_call(&self, request: crate::_osquery::ExtensionPluginRequest) -> ExtensionResponse {
+        let action = request.get("action").map(|s| s.as_str()).unwrap_or("");
+
+        log::trace!("Action: {action}");
+
+        match action {
+            "columns" => {
+                let resp = self.routes();
+                ExtensionResponse::new(
+                    osquery::ExtensionStatus {
+                        code: Some(0),
+                        message: Some("Success".to_string()),
+                        uuid: Default::default(),
+                    },
+                    resp,
+                )
+            }
+            "generate" => self.generate(request),
+            "update" => self.update(request),
+            "delete" => self.delete(request),
+            "insert" => self.insert(request),
+            _ => ExtensionResponseEnum::Failure(format!(
+                "Invalid table plugin action:{action:?} request:{request:?}"
+            ))
+            .into(),
+        }
+    }
+
+    fn shutdown(&self) {
+        log::trace!("Shutting down plugin: {}", self.name());
+
+        match self {
+            TablePlugin::Writeable(table) => {
+                let Ok(table) = table.lock() else {
+                    log::error!("Plugin was unavailable, could not lock table");
+                    return;
+                };
+
+                table.shutdown();
+            }
+            TablePlugin::Readonly(table) => table.shutdown(),
+        }
+    }
+}
+
+impl TablePlugin {
     fn generate(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
         match self {
             TablePlugin::Writeable(table) => {
@@ -206,22 +252,6 @@ impl OsqueryPlugin for TablePlugin {
             InsertResult::Success(rowid) => SuccessWithId(rowid).into(),
             InsertResult::Constraint => ExtensionResponseEnum::Constraint().into(),
             InsertResult::Err(err) => ExtensionResponseEnum::Failure(err).into(),
-        }
-    }
-
-    fn shutdown(&self) {
-        log::trace!("Shutting down plugin: {}", self.name());
-
-        match self {
-            TablePlugin::Writeable(table) => {
-                let Ok(table) = table.lock() else {
-                    log::error!("Plugin was unavailable, could not lock table");
-                    return;
-                };
-
-                table.shutdown();
-            }
-            TablePlugin::Readonly(table) => table.shutdown(),
         }
     }
 }

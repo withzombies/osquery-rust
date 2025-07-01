@@ -3,8 +3,8 @@ use crate::_osquery::{ExtensionPluginRequest, ExtensionResponse};
 use crate::plugin::config::{ConfigPlugin, ConfigPluginWrapper};
 use crate::plugin::logger::{LoggerPlugin, LoggerPluginWrapper};
 use crate::plugin::table::{ReadOnlyTable, TablePlugin};
-use crate::plugin::Table;
-use crate::plugin::{OsqueryPlugin, Registry};
+use crate::plugin::Registry;
+use crate::plugin::{OsqueryPlugin, Table};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -75,82 +75,11 @@ impl OsqueryPlugin for Plugin {
 
     // Call requests the plugin to perform its defined behavior, returning
     // a response containing the result.
-    fn generate(&self, req: osquery::ExtensionPluginRequest) -> osquery::ExtensionResponse {
+    fn handle_call(&self, request: ExtensionPluginRequest) -> ExtensionResponse {
         match self {
-            Plugin::Config(c) => c.generate(req),
-            Plugin::Logger(l) => l.generate(req),
-            Plugin::Table(t) => t.generate(req),
-        }
-    }
-
-    fn update(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
-        match self {
-            Plugin::Config(_) => {
-                // Config plugins don't support update
-                let status = osquery::ExtensionStatus {
-                    code: Some(1),
-                    message: Some("Config plugins do not support update operations".to_string()),
-                    uuid: Default::default(),
-                };
-                osquery::ExtensionResponse::new(status, vec![])
-            }
-            Plugin::Logger(_) => {
-                // Logger plugins don't support update
-                let status = osquery::ExtensionStatus {
-                    code: Some(1),
-                    message: Some("Logger plugins do not support update operations".to_string()),
-                    uuid: Default::default(),
-                };
-                osquery::ExtensionResponse::new(status, vec![])
-            }
-            Plugin::Table(t) => t.update(req),
-        }
-    }
-
-    fn delete(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
-        match self {
-            Plugin::Config(_) => {
-                // Config plugins don't support delete
-                let status = osquery::ExtensionStatus {
-                    code: Some(1),
-                    message: Some("Config plugins do not support delete operations".to_string()),
-                    uuid: Default::default(),
-                };
-                osquery::ExtensionResponse::new(status, vec![])
-            }
-            Plugin::Logger(_) => {
-                // Logger plugins don't support delete
-                let status = osquery::ExtensionStatus {
-                    code: Some(1),
-                    message: Some("Logger plugins do not support delete operations".to_string()),
-                    uuid: Default::default(),
-                };
-                osquery::ExtensionResponse::new(status, vec![])
-            }
-            Plugin::Table(t) => t.delete(req),
-        }
-    }
-
-    fn insert(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
-        match self {
-            Plugin::Config(_) => {
-                let status = osquery::ExtensionStatus {
-                    code: Some(1),
-                    message: Some("Config plugins do not support insert operations".to_string()),
-                    uuid: Default::default(),
-                };
-                osquery::ExtensionResponse::new(status, vec![])
-            }
-            Plugin::Logger(_) => {
-                // Logger plugins don't support insert
-                let status = osquery::ExtensionStatus {
-                    code: Some(1),
-                    message: Some("Logger plugins do not support insert operations".to_string()),
-                    uuid: Default::default(),
-                };
-                osquery::ExtensionResponse::new(status, vec![])
-            }
-            Plugin::Table(t) => t.insert(req),
+            Plugin::Config(c) => c.handle_call(request),
+            Plugin::Logger(l) => l.handle_call(request),
+            Plugin::Table(t) => t.handle_call(request),
         }
     }
 

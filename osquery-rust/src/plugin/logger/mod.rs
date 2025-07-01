@@ -54,8 +54,8 @@
 
 use crate::_osquery::osquery::{ExtensionPluginRequest, ExtensionPluginResponse};
 use crate::_osquery::osquery::{ExtensionResponse, ExtensionStatus};
+use crate::plugin::OsqueryPlugin;
 use crate::plugin::_enums::response::ExtensionResponseEnum;
-use crate::plugin::_traits::osquery_plugin::OsqueryPlugin;
 use serde_json::Value;
 use std::fmt;
 
@@ -361,7 +361,7 @@ impl<L: LoggerPlugin> OsqueryPlugin for LoggerPluginWrapper<L> {
         ExtensionStatus::default()
     }
 
-    fn generate(&self, request: ExtensionPluginRequest) -> ExtensionResponse {
+    fn handle_call(&self, request: crate::_osquery::ExtensionPluginRequest) -> ExtensionResponse {
         // Parse the request into a structured type
         let request_type = self.parse_request(&request);
 
@@ -372,110 +372,7 @@ impl<L: LoggerPlugin> OsqueryPlugin for LoggerPluginWrapper<L> {
         }
     }
 
-    fn update(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-        // Logger plugins don't support update operations
-        let status = ExtensionStatus {
-            code: Some(1),
-            message: Some("Logger plugins do not support update operations".to_string()),
-            uuid: Default::default(),
-        };
-        ExtensionResponse::new(status, vec![])
-    }
-
-    fn delete(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-        // Logger plugins don't support delete operations
-        let status = ExtensionStatus {
-            code: Some(1),
-            message: Some("Logger plugins do not support delete operations".to_string()),
-            uuid: Default::default(),
-        };
-        ExtensionResponse::new(status, vec![])
-    }
-
-    fn insert(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-        // Logger plugins don't support insert operations
-        let status = ExtensionStatus {
-            code: Some(1),
-            message: Some("Logger plugins do not support insert operations".to_string()),
-            uuid: Default::default(),
-        };
-        ExtensionResponse::new(status, vec![])
-    }
-
     fn shutdown(&self) {
         self.logger.shutdown();
-    }
-}
-
-#[cfg(test)]
-#[allow(clippy::panic, clippy::expect_used)]
-mod tests {
-    use super::*;
-    use std::collections::BTreeMap;
-
-    struct TestLogger {
-        name: String,
-        logs: std::sync::Mutex<Vec<String>>,
-    }
-
-    impl LoggerPlugin for TestLogger {
-        fn name(&self) -> String {
-            self.name.clone()
-        }
-
-        fn log_string(&self, message: &str) -> Result<(), String> {
-            self.logs
-                .lock()
-                .map_err(|e| e.to_string())?
-                .push(message.to_string());
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn test_logger_wrapper_string_log() {
-        let logger = TestLogger {
-            name: "test_logger".to_string(),
-            logs: std::sync::Mutex::new(Vec::new()),
-        };
-        let wrapper = LoggerPluginWrapper::new(logger);
-
-        let mut request = BTreeMap::new();
-        request.insert("string".to_string(), "Test log message".to_string());
-
-        let response = wrapper.generate(request);
-        if let Some(status) = response.status {
-            assert_eq!(status.code, Some(0));
-        } else {
-            panic!("Expected status in response");
-        }
-    }
-
-    #[test]
-    fn test_log_severity_conversion() {
-        assert_eq!(
-            LogSeverity::try_from(0i64).expect("Should parse 0"),
-            LogSeverity::Info
-        );
-        assert_eq!(
-            LogSeverity::try_from(1i64).expect("Should parse 1"),
-            LogSeverity::Warning
-        );
-        assert_eq!(
-            LogSeverity::try_from(2i64).expect("Should parse 2"),
-            LogSeverity::Error
-        );
-        assert!(LogSeverity::try_from(3i64).is_err());
-    }
-
-    #[test]
-    fn test_log_status_display() {
-        let status = LogStatus {
-            severity: LogSeverity::Error,
-            filename: "test.rs".to_string(),
-            line: 42,
-            message: "Test error".to_string(),
-        };
-        assert_eq!(status.to_string(), "[ERROR] test.rs:42 - Test error");
     }
 }

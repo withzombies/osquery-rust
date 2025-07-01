@@ -1,6 +1,4 @@
-use crate::_osquery::{
-    ExtensionPluginRequest, ExtensionPluginResponse, ExtensionResponse, ExtensionStatus,
-};
+use crate::_osquery::{ExtensionPluginResponse, ExtensionResponse, ExtensionStatus};
 use crate::plugin::{ExtensionResponseEnum, OsqueryPlugin, Registry};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -64,9 +62,9 @@ impl OsqueryPlugin for ConfigPluginWrapper {
         ExtensionStatus::default()
     }
 
-    fn generate(&self, req: ExtensionPluginRequest) -> ExtensionResponse {
+    fn handle_call(&self, request: crate::_osquery::ExtensionPluginRequest) -> ExtensionResponse {
         // Config plugins handle two actions: genConfig and genPack
-        let action = req.get("action").map(|s| s.as_str()).unwrap_or("");
+        let action = request.get("action").map(|s| s.as_str()).unwrap_or("");
 
         match action {
             "genConfig" => {
@@ -88,8 +86,8 @@ impl OsqueryPlugin for ConfigPluginWrapper {
                 }
             }
             "genPack" => {
-                let name = req.get("name").cloned().unwrap_or_default();
-                let value = req.get("value").cloned().unwrap_or_default();
+                let name = request.get("name").cloned().unwrap_or_default();
+                let value = request.get("value").cloned().unwrap_or_default();
 
                 match self.plugin.gen_pack(&name, &value) {
                     Ok(pack_content) => {
@@ -106,33 +104,6 @@ impl OsqueryPlugin for ConfigPluginWrapper {
             _ => ExtensionResponseEnum::Failure(format!("Unknown config plugin action: {action}"))
                 .into(),
         }
-    }
-
-    fn update(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-        let status = ExtensionStatus {
-            code: Some(1),
-            message: Some("Config plugins do not support update operations".to_string()),
-            uuid: Default::default(),
-        };
-        ExtensionResponse::new(status, vec![])
-    }
-
-    fn delete(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-        let status = ExtensionStatus {
-            code: Some(1),
-            message: Some("Config plugins do not support delete operations".to_string()),
-            uuid: Default::default(),
-        };
-        ExtensionResponse::new(status, vec![])
-    }
-
-    fn insert(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-        let status = ExtensionStatus {
-            code: Some(1),
-            message: Some("Config plugins do not support insert operations".to_string()),
-            uuid: Default::default(),
-        };
-        ExtensionResponse::new(status, vec![])
     }
 
     fn shutdown(&self) {
