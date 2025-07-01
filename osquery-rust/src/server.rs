@@ -189,7 +189,9 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
     /// Second string is sub command, e.g. columns
     ///
     /// Dispatches requests to the plugin defined by registry + item
-    /// Actions implemented: columns, generate
+    /// Standard table actions: columns, generate, update, delete, insert
+    /// Plugin-specific actions (e.g., genConfig, genPack for config plugins) are
+    /// passed through to the plugin's generate method
     ///
     fn handle_call(
         &self,
@@ -241,9 +243,9 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
                     "update" => Ok(plugin.update(request)),
                     "delete" => Ok(plugin.delete(request)),
                     "insert" => Ok(plugin.insert(request)),
-                    _ => {
-                        todo!("unknown action {action}")
-                    }
+                    // For config plugins (genConfig, genPack) and other plugin-specific actions,
+                    // pass the request to the plugin's generate method
+                    _ => Ok(plugin.generate(request)),
                 }
             }
             None => {

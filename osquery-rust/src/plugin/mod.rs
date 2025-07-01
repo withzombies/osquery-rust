@@ -1,5 +1,6 @@
 mod _enums;
 mod _traits;
+mod config;
 mod logger;
 mod table;
 
@@ -17,4 +18,5 @@ pub use table::{DeleteResult, InsertResult, ReadOnlyTable, Table, UpdateResult};
 
 pub use _enums::response::ExtensionResponseEnum;
 
+pub use config::{ConfigPlugin, ConfigPluginWrapper};
 pub use logger::{LogSeverity, LogStatus, LoggerPlugin, LoggerPluginWrapper};
