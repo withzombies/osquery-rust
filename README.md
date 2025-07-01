@@ -1,4 +1,10 @@
-# osquery-rust
+[![Crate][crate-image]][crate-link]
+[![Docs][docs-image]][docs-link]
+[![Status][test-action-image]][test-action-link]
+[![Apache 2.0 Licensed][license-apache-image]][license-apache-link]
+[![MIT Licensed][license-mit-image]][license-mit-link]
+
+# osquery-rust-ng
 
 By providing Rust bindings for Osquery this crate facilitates the implementation of Osquery extensions.
 
@@ -6,6 +12,7 @@ By providing Rust bindings for Osquery this crate facilitates the implementation
 
 - ✅ **Table plugins** - Create custom tables to query system information
 - ✅ **Logger plugins** - Implement custom logging backends for osquery
+- ✅ **Config plugins** - Provide custom configuration sources for osquery
 - ✅ **Writable tables** - Support for INSERT, UPDATE, and DELETE operations
 - 🦀 **Pure Rust** - No C/C++ dependencies, just safe Rust code
 - 🚀 **High performance** - Minimal overhead for extensions
@@ -121,6 +128,49 @@ impl LoggerPlugin for MyLogger {
 }
 ```
 
+### Creating Config Plugins
+
+Config plugins provide configuration data to osquery, allowing dynamic configuration management:
+
+```rust
+use osquery_rust_ng::plugin::ConfigPlugin;
+use std::collections::HashMap;
+
+struct MyConfig;
+
+impl ConfigPlugin for MyConfig {
+    fn name(&self) -> String {
+        "my_config".to_string()
+    }
+
+    fn gen_config(&self) -> Result<HashMap<String, String>, String> {
+        let mut config_map = HashMap::new();
+        
+        // Provide JSON configuration
+        let config = r#"{
+            "options": {
+                "host_identifier": "hostname",
+                "schedule_splay_percent": 10
+            },
+            "schedule": {
+                "heartbeat": {
+                    "query": "SELECT version FROM osquery_info;",
+                    "interval": 3600
+                }
+            }
+        }"#;
+        
+        config_map.insert("main".to_string(), config.to_string());
+        Ok(config_map)
+    }
+
+    fn gen_pack(&self, name: &str, _value: &str) -> Result<String, String> {
+        // Optionally provide query packs
+        Err(format!("Pack '{}' not found", name))
+    }
+}
+```
+
 ### Integration with osquery
 
 There are three ways to run your extension:
@@ -140,6 +190,8 @@ The repository includes several complete examples:
 - **[two-tables](examples/two-tables/)** - Shows how to register multiple tables in one extension
 - **[logger-file](examples/logger-file/)** - Logger plugin that writes to files
 - **[logger-syslog](examples/logger-syslog/)** - Logger plugin that sends logs to syslog
+- **[config-file](examples/config-file/)** - Config plugin that loads configuration from JSON files
+- **[config-static](examples/config-static/)** - Config plugin that provides static configuration
 
 Each example includes its own README with specific build and usage instructions.
 
@@ -216,9 +268,21 @@ The project is organized as a Cargo workspace:
 
 This project contributed the support for Unix Domain Sockets to [Apache Thrift's Rust crate](https://issues.apache.org/jira/browse/THRIFT-5283).
 
+This project was initially forked from [polarlab's osquery-rust project](https://github.com/polarlabs/osquery-rust).
+
 ## Links
 
 - [Osquery's GitHub repo](https://github.com/osquery/osquery)
 - [Osquery documentation](https://osquery.readthedocs.io/)
 - [Developing Osquery Extensions](https://osquery.readthedocs.io/en/stable/deployment/extensions/)
 - [The Osquery SDK](https://osquery.readthedocs.io/en/stable/development/osquery-sdk/)
+
+[//]: # (links)
+
+[crate-image]: https://img.shields.io/crates/v/osquery-rust-ng.svg
+
+[crate-link]: https://crates.io/crates/osquery-rust-ng
+
+[docs-image]: https://docs.rs/osquery-rust-ng/badge.svg
+
+[docs-link]: https://docs.rs/osquery-rust-ng/
