@@ -286,3 +286,15 @@ This project was initially forked from [polarlab's osquery-rust project](https:/
 [docs-image]: https://docs.rs/osquery-rust-ng/badge.svg
 
 [docs-link]: https://docs.rs/osquery-rust-ng/
+
+[test-action-image]: https://github.com/withzombies/osquery-rust/workflows/Rust%20CI/badge.svg
+
+[test-action-link]: https://github.com/withzombies/osquery-rust/actions?query=workflow:Rust%20CI
+
+[license-apache-image]: https://img.shields.io/badge/license-Apache2.0-blue.svg
+
+[license-apache-link]: http://www.apache.org/licenses/LICENSE-2.0
+
+[license-mit-image]: https://img.shields.io/badge/license-MIT-blue.svg
+
+[license-mit-link]: http://www.apache.org/licenses/LICENSE-2.0
