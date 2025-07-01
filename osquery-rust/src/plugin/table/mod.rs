@@ -168,7 +168,7 @@ impl OsqueryPlugin for TablePlugin {
         match table.delete(id) {
             DeleteResult::Success => ExtensionResponseEnum::Success().into(),
             DeleteResult::Err(e) => {
-                ExtensionResponseEnum::Failure(format!("Plugin error {}", e).to_string()).into()
+                ExtensionResponseEnum::Failure(format!("Plugin error {e}").to_string()).into()
             }
         }
     }

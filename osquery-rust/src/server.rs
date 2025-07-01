@@ -130,7 +130,7 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
         match server.listen_uds(listen_path.clone()) {
             Ok(_) => {}
             Err(e) => {
-                log::error!("FATAL: {} while binding to {}", e, listen_path)
+                log::error!("FATAL: {e} while binding to {listen_path}")
             }
         }
         self.server = Some(server);
@@ -199,13 +199,13 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
     ) -> thrift::Result<osquery::ExtensionResponse> {
         let ok = osquery::ExtensionStatus::default();
 
-        log::trace!("Registry: {}", registry);
-        log::trace!("Item: {}", item);
-        log::trace!("Request: {:?}", request);
+        log::trace!("Registry: {registry}");
+        log::trace!("Item: {item}");
+        log::trace!("Request: {request:?}");
 
         match request.get("action") {
             Some(action) => {
-                log::trace!("Action: {}", action);
+                log::trace!("Action: {action}");
                 let plugin = self
                     .registry
                     .get(registry.as_str())

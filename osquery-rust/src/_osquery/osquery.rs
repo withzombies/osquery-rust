@@ -827,7 +827,7 @@ impl <H: ExtensionSyncHandler> TProcessor for ExtensionSyncProcessor<H> {
           thrift::Error::Application(
             ApplicationError::new(
               ApplicationErrorKind::UnknownMethod,
-              format!("unknown method {}", method)
+              format!("unknown method {method}")
             )
           )
         )
@@ -1658,7 +1658,7 @@ impl <H: ExtensionManagerSyncHandler> TProcessor for ExtensionManagerSyncProcess
           thrift::Error::Application(
             ApplicationError::new(
               ApplicationErrorKind::UnknownMethod,
-              format!("unknown method {}", method)
+              format!("unknown method {method}")
             )
           )
         )

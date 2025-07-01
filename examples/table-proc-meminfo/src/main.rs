@@ -28,7 +28,7 @@ impl ReadOnlyTable for ProcMemInfoTable {
         let f = match File::open("/proc/meminfo") {
             Ok(f) => f,
             Err(e) => {
-                println!("Error opening file: {}", e);
+                println!("Error opening file: {e}");
                 return vec![];
             }
         };
@@ -39,7 +39,7 @@ impl ReadOnlyTable for ProcMemInfoTable {
             let line = match line {
                 Ok(line) => line,
                 Err(e) => {
-                    println!("Error reading line: {}", e);
+                    println!("Error reading line: {e}");
                     continue;
                 }
             };
@@ -80,7 +80,7 @@ impl ProcMemInfoTable {
         let f = match File::open("/proc/meminfo") {
             Ok(x) => x,
             Err(e) => {
-                println!("Error opening file: {}", e);
+                println!("Error opening file: {e}");
                 return map;
             }
         };
@@ -90,7 +90,7 @@ impl ProcMemInfoTable {
             let line = match line {
                 Ok(line) => line,
                 Err(e) => {
-                    println!("Error reading line: {}", e);
+                    println!("Error reading line: {e}");
                     continue;
                 }
             };

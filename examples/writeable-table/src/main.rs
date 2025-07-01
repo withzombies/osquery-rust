@@ -59,7 +59,7 @@ impl Table for WriteableTable {
     }
 
     fn update(&mut self, rowid: u64, row: &Value) -> UpdateResult {
-        log::info!("updating item at {} = {:?}", rowid, row);
+        log::info!("updating item at {rowid} = {row:?}");
 
         let Some(row) = row.as_array() else {
             return UpdateResult::Err("Could not parse row as array".to_string());
@@ -84,7 +84,7 @@ impl Table for WriteableTable {
     }
 
     fn delete(&mut self, rowid: u64) -> DeleteResult {
-        log::info!("deleting item: {}", rowid);
+        log::info!("deleting item: {rowid}");
 
         match self.items.remove(&rowid) {
             Some(_) => DeleteResult::Success,
@@ -93,7 +93,7 @@ impl Table for WriteableTable {
     }
 
     fn insert(&mut self, _auto_rowid: bool, row: &Value) -> InsertResult {
-        log::info!("inserting item: {:?}", row);
+        log::info!("inserting item: {row:?}");
 
         let Some(row) = row.as_array() else {
             return InsertResult::Err("Could not parse row as array".to_string());
@@ -103,7 +103,7 @@ impl Table for WriteableTable {
             [Value::Null, Value::String(name), Value::String(lastname)] => {
                 // TODO: figure out what auto_rowid means here
                 let rowid = self.items.keys().next_back().unwrap_or(&0u64) + 1;
-                log::info!("rowid: {}", rowid);
+                log::info!("rowid: {rowid}");
 
                 self.items.insert(rowid, (name.clone(), lastname.clone()));
 
