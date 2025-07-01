@@ -1,5 +1,6 @@
 mod _enums;
 mod _traits;
+mod logger;
 mod table;
 
 // Re-exporting all public structures
@@ -15,3 +16,5 @@ pub use table::query_constraint::QueryConstraints;
 pub use table::{DeleteResult, InsertResult, ReadOnlyTable, Table, UpdateResult};
 
 pub use _enums::response::ExtensionResponseEnum;
+
+pub use logger::{LogSeverity, LogStatus, LoggerPlugin, LoggerPluginWrapper};

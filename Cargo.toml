@@ -2,6 +2,7 @@
 members = [
     "osquery-rust",
     "examples/table-proc-meminfo", "examples/writeable-table", "examples/two-tables",
+    "examples/logger-file", "examples/logger-syslog",
 ]
 
 resolver = "2"

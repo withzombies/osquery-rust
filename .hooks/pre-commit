@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Check formatting
+echo "Checking formatting with cargo fmt..."
+if ! cargo fmt --all -- --check; then
+    echo "Error: Code is not formatted. Please run 'cargo fmt --all' before committing."
+    exit 1
+fi
+
+# Run Clippy linter
+echo "Running cargo clippy..."
+if ! cargo clippy --all-targets --all-features -- -D warnings; then
+    echo "Error: Clippy found warnings or errors. Please fix them before committing."
+    exit 1
+fi
+
+# Run tests
+echo "Running tests with cargo test..."
+if ! cargo test --all; then
+    echo "Error: Some tests failed. Please fix them before committing."
+    exit 1
+fi
+
+echo "All checks passed. Proceeding with commit."
+exit 0

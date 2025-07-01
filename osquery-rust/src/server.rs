@@ -247,8 +247,27 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
                 }
             }
             None => {
-                log::error!("Error: unknown ExtensionPluginRequest");
-                todo!()
+                // For logger plugins and other plugins that don't use "action"
+                // Just call generate directly with the request
+                let plugin = self
+                    .registry
+                    .get(registry.as_str())
+                    .ok_or_thrift_err(|| {
+                        format!(
+                            "Failed to get registry:{} from registries",
+                            registry.as_str()
+                        )
+                    })?
+                    .get(item.as_str())
+                    .ok_or_thrift_err(|| {
+                        format!(
+                            "Failed to get item:{} from registry:{}",
+                            item.as_str(),
+                            registry.as_str()
+                        )
+                    })?;
+
+                Ok(plugin.generate(request))
             }
         }
     }

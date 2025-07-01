@@ -1,13 +1,15 @@
 use crate::_osquery as osquery;
 use crate::_osquery::{ExtensionPluginRequest, ExtensionResponse};
+use crate::plugin::logger::{LoggerPlugin, LoggerPluginWrapper};
 use crate::plugin::table::{ReadOnlyTable, TablePlugin};
 use crate::plugin::Table;
 use crate::plugin::{OsqueryPlugin, Registry};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub enum Plugin {
     Config,
-    Logger,
+    Logger(Arc<dyn OsqueryPlugin>),
     Table(TablePlugin),
 }
 
@@ -24,8 +26,8 @@ impl Plugin {
         Plugin::Config
     }
 
-    pub fn logger() -> Self {
-        Plugin::Logger
+    pub fn logger<L: LoggerPlugin + 'static>(l: L) -> Self {
+        Plugin::Logger(Arc::new(LoggerPluginWrapper::new(l)))
     }
 }
 
@@ -35,7 +37,7 @@ impl OsqueryPlugin for Plugin {
     fn name(&self) -> String {
         match self {
             Plugin::Config => todo!(),
-            Plugin::Logger => todo!(),
+            Plugin::Logger(l) => l.name(),
             Plugin::Table(t) => t.name(),
         }
     }
@@ -44,7 +46,7 @@ impl OsqueryPlugin for Plugin {
     fn registry(&self) -> Registry {
         match self {
             Plugin::Config => Registry::Config,
-            Plugin::Logger => Registry::Logger,
+            Plugin::Logger(_) => Registry::Logger,
             Plugin::Table(_) => Registry::Table,
         }
     }
@@ -57,9 +59,7 @@ impl OsqueryPlugin for Plugin {
             Plugin::Config => {
                 todo!()
             }
-            Plugin::Logger => {
-                todo!()
-            }
+            Plugin::Logger(l) => l.routes(),
             Plugin::Table(t) => t.routes(),
         }
     }
@@ -77,9 +77,7 @@ impl OsqueryPlugin for Plugin {
             Plugin::Config => {
                 todo!()
             }
-            Plugin::Logger => {
-                todo!()
-            }
+            Plugin::Logger(l) => l.generate(req),
             Plugin::Table(t) => t.generate(req),
         }
     }
@@ -89,8 +87,14 @@ impl OsqueryPlugin for Plugin {
             Plugin::Config => {
                 todo!()
             }
-            Plugin::Logger => {
-                todo!()
+            Plugin::Logger(_) => {
+                // Logger plugins don't support update
+                let status = osquery::ExtensionStatus {
+                    code: Some(1),
+                    message: Some("Logger plugins do not support update operations".to_string()),
+                    uuid: Default::default(),
+                };
+                osquery::ExtensionResponse::new(status, vec![])
             }
             Plugin::Table(t) => t.update(req),
         }
@@ -101,8 +105,14 @@ impl OsqueryPlugin for Plugin {
             Plugin::Config => {
                 todo!()
             }
-            Plugin::Logger => {
-                todo!()
+            Plugin::Logger(_) => {
+                // Logger plugins don't support delete
+                let status = osquery::ExtensionStatus {
+                    code: Some(1),
+                    message: Some("Logger plugins do not support delete operations".to_string()),
+                    uuid: Default::default(),
+                };
+                osquery::ExtensionResponse::new(status, vec![])
             }
             Plugin::Table(t) => t.delete(req),
         }
@@ -113,8 +123,14 @@ impl OsqueryPlugin for Plugin {
             Plugin::Config => {
                 todo!()
             }
-            Plugin::Logger => {
-                todo!()
+            Plugin::Logger(_) => {
+                // Logger plugins don't support insert
+                let status = osquery::ExtensionStatus {
+                    code: Some(1),
+                    message: Some("Logger plugins do not support insert operations".to_string()),
+                    uuid: Default::default(),
+                };
+                osquery::ExtensionResponse::new(status, vec![])
             }
             Plugin::Table(t) => t.insert(req),
         }
@@ -126,9 +142,7 @@ impl OsqueryPlugin for Plugin {
             Plugin::Config => {
                 todo!()
             }
-            Plugin::Logger => {
-                todo!()
-            }
+            Plugin::Logger(l) => l.shutdown(),
             Plugin::Table(t) => t.shutdown(),
         }
     }
