@@ -19,4 +19,4 @@ pub use table::{DeleteResult, InsertResult, ReadOnlyTable, Table, UpdateResult};
 pub use _enums::response::ExtensionResponseEnum;
 
 pub use config::{ConfigPlugin, ConfigPluginWrapper};
-pub use logger::{LogSeverity, LogStatus, LoggerPlugin, LoggerPluginWrapper};
+pub use logger::{LogSeverity, LogStatus, LoggerFeatures, LoggerPlugin, LoggerPluginWrapper};
