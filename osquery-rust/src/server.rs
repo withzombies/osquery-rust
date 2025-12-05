@@ -147,8 +147,69 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
         self
     }
 
+    /// Run the server, blocking until shutdown is requested.
+    ///
+    /// This method starts the server, registers with osquery, and enters a loop
+    /// that pings osquery periodically. The loop exits when shutdown is triggered
+    /// by any of:
+    /// - osquery calling the shutdown RPC
+    /// - Connection to osquery being lost
+    /// - `stop()` being called from another thread
+    ///
+    /// For signal handling (SIGTERM/SIGINT), use `run_with_signal_handling()` instead.
     pub fn run(&mut self) -> thrift::Result<()> {
         self.start()?;
+        self.run_loop();
+        self.shutdown_and_cleanup();
+        Ok(())
+    }
+
+    /// Run the server with signal handling enabled (Unix only).
+    ///
+    /// This method registers handlers for SIGTERM and SIGINT that will trigger
+    /// graceful shutdown. Use this instead of `run()` if you want the server to
+    /// respond to OS signals (e.g., systemd sending SIGTERM, or Ctrl+C sending SIGINT).
+    ///
+    /// The loop exits when shutdown is triggered by any of:
+    /// - SIGTERM or SIGINT signal received
+    /// - osquery calling the shutdown RPC
+    /// - Connection to osquery being lost
+    /// - `stop()` being called from another thread
+    ///
+    /// # Platform Support
+    ///
+    /// This method is only available on Unix platforms. For Windows, use `run()`
+    /// and implement your own signal handling.
+    #[cfg(unix)]
+    pub fn run_with_signal_handling(&mut self) -> thrift::Result<()> {
+        use signal_hook::consts::{SIGINT, SIGTERM};
+        use signal_hook::flag;
+
+        // Register signal handlers that set our shutdown flag.
+        // signal_hook::flag::register atomically sets the bool when signal received.
+        // Errors are rare (e.g., invalid signal number) and non-fatal - signals
+        // just won't trigger shutdown, but other shutdown mechanisms still work.
+        let _ = flag::register(SIGINT, self.shutdown_flag.clone());
+        let _ = flag::register(SIGTERM, self.shutdown_flag.clone());
+
+        self.start()?;
+        self.run_loop();
+
+        // Set reason to SignalReceived if no other reason was set.
+        // signal_hook only sets the flag, not our reason, so we detect this case
+        // by checking if reason is still None after the loop exits.
+        if let Ok(mut guard) = self.shutdown_reason.lock() {
+            if guard.is_none() {
+                *guard = Some(ShutdownReason::SignalReceived);
+            }
+        }
+
+        self.shutdown_and_cleanup();
+        Ok(())
+    }
+
+    /// The main ping loop. Exits when should_shutdown() returns true.
+    fn run_loop(&mut self) {
         while !self.should_shutdown() {
             if let Err(e) = self.client.ping() {
                 log::warn!("Ping failed: {e}");
@@ -157,11 +218,14 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
             }
             thread::sleep(self.ping_interval);
         }
+    }
+
+    /// Common shutdown logic: log, notify plugins, cleanup socket.
+    fn shutdown_and_cleanup(&self) {
         let reason = self.get_shutdown_reason();
         log::info!("Shutting down: {reason}");
         self.notify_plugins_shutdown(reason);
         self.cleanup_socket();
-        Ok(())
     }
 
     fn start(&mut self) -> thrift::Result<()> {

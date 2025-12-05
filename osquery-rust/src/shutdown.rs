@@ -27,6 +27,10 @@ pub enum ShutdownReason {
     /// The extension code called `stop()` to request shutdown.
     /// This is an application-initiated graceful shutdown.
     ApplicationRequested,
+
+    /// A signal (SIGTERM or SIGINT) was received.
+    /// This is triggered when using `run_with_signal_handling()`.
+    SignalReceived,
 }
 
 impl std::fmt::Display for ShutdownReason {
@@ -36,6 +40,7 @@ impl std::fmt::Display for ShutdownReason {
             ShutdownReason::ConnectionLost => write!(f, "connection to osquery lost"),
             ShutdownReason::Timeout => write!(f, "ping timeout"),
             ShutdownReason::ApplicationRequested => write!(f, "application requested shutdown"),
+            ShutdownReason::SignalReceived => write!(f, "signal received"),
         }
     }
 }
@@ -70,6 +75,14 @@ mod tests {
         assert_eq!(
             ShutdownReason::ApplicationRequested.to_string(),
             "application requested shutdown"
+        );
+    }
+
+    #[test]
+    fn test_display_signal_received() {
+        assert_eq!(
+            ShutdownReason::SignalReceived.to_string(),
+            "signal received"
         );
     }
 
