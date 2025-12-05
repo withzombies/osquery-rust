@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use strum::VariantNames;
@@ -53,7 +53,7 @@ pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static> {
     #[allow(dead_code)]
     shutdown_flag: Arc<AtomicBool>,
     #[allow(dead_code)]
-    shutdown_reason: Arc<std::sync::Mutex<Option<ShutdownReason>>>,
+    shutdown_reason: Arc<Mutex<Option<ShutdownReason>>>,
 }
 
 impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
@@ -79,7 +79,7 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
             uuid: None,
             started: false,
             shutdown_flag: Arc::new(AtomicBool::new(false)),
-            shutdown_reason: Arc::new(std::sync::Mutex::new(None)),
+            shutdown_reason: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -133,7 +133,11 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
         self.uuid = stat.uuid;
         let listen_path = format!("{}.{}", self.socket_path, self.uuid.unwrap_or(0));
 
-        let processor = osquery::ExtensionManagerSyncProcessor::new(Handler::new(&self.plugins)?);
+        let processor = osquery::ExtensionManagerSyncProcessor::new(Handler::new(
+            &self.plugins,
+            self.shutdown_flag.clone(),
+            self.shutdown_reason.clone(),
+        )?);
         let i_tr_fact: Box<dyn TReadTransportFactory> =
             Box::new(TBufferedReadTransportFactory::new());
         let i_pr_fact: Box<dyn TInputProtocolFactory> =
@@ -234,10 +238,16 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
 
 struct Handler<P: OsqueryPlugin + Clone> {
     registry: HashMap<String, HashMap<String, P>>,
+    shutdown_flag: Arc<AtomicBool>,
+    shutdown_reason: Arc<Mutex<Option<ShutdownReason>>>,
 }
 
 impl<P: OsqueryPlugin + Clone> Handler<P> {
-    fn new(plugins: &[P]) -> thrift::Result<Self> {
+    fn new(
+        plugins: &[P],
+        shutdown_flag: Arc<AtomicBool>,
+        shutdown_reason: Arc<Mutex<Option<ShutdownReason>>>,
+    ) -> thrift::Result<Self> {
         let mut reg: HashMap<String, HashMap<String, P>> = HashMap::new();
         for var in Registry::VARIANTS {
             reg.insert((*var).to_string(), HashMap::new());
@@ -249,7 +259,11 @@ impl<P: OsqueryPlugin + Clone> Handler<P> {
                 .insert(plugin.name(), plugin.clone());
         }
 
-        Ok(Handler { registry: reg })
+        Ok(Handler {
+            registry: reg,
+            shutdown_flag,
+            shutdown_reason,
+        })
     }
 }
 
@@ -290,13 +304,24 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
     }
 
     fn handle_shutdown(&self) -> thrift::Result<()> {
-        log::trace!("Shutdown");
+        log::trace!("Shutdown RPC received from osquery");
 
+        // Notify all plugins first (existing behavior)
         self.registry.iter().for_each(|(_, v)| {
             v.iter().for_each(|(_, p)| {
                 p.shutdown();
             });
         });
+
+        // Signal the run() loop to exit
+        // Set reason first (only if not already set - first reason wins)
+        if let Ok(mut guard) = self.shutdown_reason.lock() {
+            if guard.is_none() {
+                *guard = Some(ShutdownReason::OsqueryRequested);
+            }
+        }
+        // Then set the flag (ensures reason is visible when flag is true)
+        self.shutdown_flag.store(true, Ordering::SeqCst);
 
         Ok(())
     }
