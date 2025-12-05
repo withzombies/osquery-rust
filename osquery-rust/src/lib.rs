@@ -9,7 +9,7 @@ pub(crate) mod server;
 mod shutdown;
 mod util;
 
-pub use crate::server::Server;
+pub use crate::server::{Server, ServerStopHandle};
 pub use crate::shutdown::ShutdownReason;
 
 // Re-exports
@@ -26,6 +26,7 @@ pub type ExtensionStatus = _osquery::osquery::ExtensionStatus;
 /// ```
 pub mod prelude {
     pub use crate::Server;
+    pub use crate::ServerStopHandle;
     pub use crate::ShutdownReason;
     pub use crate::{
         ExtensionPluginRequest, ExtensionPluginResponse, ExtensionResponse, ExtensionStatus,

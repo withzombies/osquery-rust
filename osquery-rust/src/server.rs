@@ -20,6 +20,61 @@ use crate::util::OptionToThriftResult;
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
 const DEFAULT_PING_INTERVAL: Duration = Duration::from_millis(5000);
 
+/// Handle that allows stopping the server from another thread.
+///
+/// This handle can be cloned and shared across threads. It provides a way for
+/// external code to request a graceful shutdown of the server.
+///
+/// # Thread Safety
+///
+/// `ServerStopHandle` is `Clone + Send + Sync` and can be safely shared between
+/// threads. Multiple calls to `stop()` are safe - only the first reason is recorded.
+///
+/// # Example
+///
+/// ```ignore
+/// let mut server = Server::new(None, "/path/to/socket")?;
+/// let handle = server.get_stop_handle();
+///
+/// // In another thread:
+/// std::thread::spawn(move || {
+///     // ... some condition ...
+///     handle.stop(ShutdownReason::ApplicationRequested);
+/// });
+///
+/// server.run()?; // Will exit when stop() is called
+/// ```
+#[derive(Clone)]
+pub struct ServerStopHandle {
+    shutdown_flag: Arc<AtomicBool>,
+    shutdown_reason: Arc<Mutex<Option<ShutdownReason>>>,
+}
+
+impl ServerStopHandle {
+    /// Request the server to stop with the given reason.
+    ///
+    /// This method is idempotent - multiple calls are safe, but only the first
+    /// reason is recorded. The server will exit its run loop on the next iteration.
+    pub fn stop(&self, reason: ShutdownReason) {
+        // Store reason first (only if not already set - first reason wins)
+        if let Ok(mut guard) = self.shutdown_reason.lock() {
+            if guard.is_none() {
+                *guard = Some(reason);
+            }
+        }
+        // Then set the flag (ensures reason is visible when flag is true)
+        self.shutdown_flag.store(true, Ordering::SeqCst);
+    }
+
+    /// Check if the server is still running.
+    ///
+    /// Returns `true` if the server has not been requested to stop,
+    /// `false` if `stop()` has been called.
+    pub fn is_running(&self) -> bool {
+        !self.shutdown_flag.load(Ordering::SeqCst)
+    }
+}
+
 #[allow(clippy::type_complexity)]
 pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static> {
     name: String,
@@ -233,6 +288,36 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
                 log::warn!("Failed to remove socket file {socket_path}: {e}");
             }
         }
+    }
+
+    /// Get a handle that can be used to stop the server from another thread.
+    ///
+    /// The returned handle can be cloned and shared across threads. Calling
+    /// `stop()` on the handle will cause the server's `run()` method to exit
+    /// gracefully on the next iteration.
+    pub fn get_stop_handle(&self) -> ServerStopHandle {
+        ServerStopHandle {
+            shutdown_flag: self.shutdown_flag.clone(),
+            shutdown_reason: self.shutdown_reason.clone(),
+        }
+    }
+
+    /// Request the server to stop with the given reason.
+    ///
+    /// This is a convenience method equivalent to calling `stop()` on a
+    /// `ServerStopHandle`. The server will exit its `run()` loop on the next
+    /// iteration.
+    pub fn stop(&self, reason: ShutdownReason) {
+        self.request_shutdown(reason);
+    }
+
+    /// Check if the server is still running.
+    ///
+    /// Returns `true` if the server has not been requested to stop,
+    /// `false` if `stop()` has been called or shutdown has been triggered
+    /// by another mechanism (e.g., osquery shutdown RPC, connection loss).
+    pub fn is_running(&self) -> bool {
+        !self.should_shutdown()
     }
 }
 
