@@ -2,6 +2,8 @@ use clap::crate_name;
 use std::collections::HashMap;
 use std::io::Error;
 use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use strum::VariantNames;
@@ -12,6 +14,7 @@ use crate::_osquery as osquery;
 use crate::_osquery::{TExtensionManagerSyncClient, TExtensionSyncClient};
 use crate::client::Client;
 use crate::plugin::{OsqueryPlugin, Plugin, Registry};
+use crate::shutdown::ShutdownReason;
 use crate::util::OptionToThriftResult;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -46,6 +49,11 @@ pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static> {
     uuid: Option<osquery::ExtensionRouteUUID>,
     // Used to ensure tests wait until the server is actually started
     started: bool,
+    // Shutdown signaling (used in later tasks to fix run() loop)
+    #[allow(dead_code)]
+    shutdown_flag: Arc<AtomicBool>,
+    #[allow(dead_code)]
+    shutdown_reason: Arc<std::sync::Mutex<Option<ShutdownReason>>>,
 }
 
 impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
@@ -70,6 +78,8 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
             ping_interval: DEFAULT_PING_INTERVAL,
             uuid: None,
             started: false,
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
+            shutdown_reason: Arc::new(std::sync::Mutex::new(None)),
         })
     }
 
@@ -154,6 +164,36 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
                 .insert(plugin.name(), plugin.routes());
         }
         Ok(registry)
+    }
+
+    /// Check if shutdown has been requested.
+    #[allow(dead_code)]
+    fn should_shutdown(&self) -> bool {
+        self.shutdown_flag.load(Ordering::SeqCst)
+    }
+
+    /// Request shutdown with a specific reason.
+    /// Sets the reason (if not already set) and then sets the shutdown flag.
+    #[allow(dead_code)]
+    fn request_shutdown(&self, reason: ShutdownReason) {
+        // Store reason first (only if not already set)
+        if let Ok(mut guard) = self.shutdown_reason.lock() {
+            if guard.is_none() {
+                *guard = Some(reason);
+            }
+        }
+        // Then set the flag (ensures reason is visible when flag is true)
+        self.shutdown_flag.store(true, Ordering::SeqCst);
+    }
+
+    /// Get the shutdown reason, or default if none set.
+    #[allow(dead_code)]
+    fn get_shutdown_reason(&self) -> ShutdownReason {
+        self.shutdown_reason
+            .lock()
+            .ok()
+            .and_then(|guard| *guard)
+            .unwrap_or_default()
     }
 }
 
