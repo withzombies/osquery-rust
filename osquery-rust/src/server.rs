@@ -94,10 +94,19 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
 
     pub fn run(&mut self) -> thrift::Result<()> {
         self.start()?;
-        loop {
-            self.client.ping()?;
+        while !self.should_shutdown() {
+            if let Err(e) = self.client.ping() {
+                log::warn!("Ping failed: {e}");
+                self.request_shutdown(ShutdownReason::ConnectionLost);
+                break;
+            }
             thread::sleep(self.ping_interval);
         }
+        let reason = self.get_shutdown_reason();
+        log::info!("Shutting down: {reason}");
+        self.notify_plugins_shutdown(reason);
+        self.cleanup_socket();
+        Ok(())
     }
 
     fn start(&mut self) -> thrift::Result<()> {
@@ -167,14 +176,12 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
     }
 
     /// Check if shutdown has been requested.
-    #[allow(dead_code)]
     fn should_shutdown(&self) -> bool {
         self.shutdown_flag.load(Ordering::SeqCst)
     }
 
     /// Request shutdown with a specific reason.
     /// Sets the reason (if not already set) and then sets the shutdown flag.
-    #[allow(dead_code)]
     fn request_shutdown(&self, reason: ShutdownReason) {
         // Store reason first (only if not already set)
         if let Ok(mut guard) = self.shutdown_reason.lock() {
@@ -187,13 +194,41 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
     }
 
     /// Get the shutdown reason, or default if none set.
-    #[allow(dead_code)]
     fn get_shutdown_reason(&self) -> ShutdownReason {
         self.shutdown_reason
             .lock()
             .ok()
             .and_then(|guard| *guard)
             .unwrap_or_default()
+    }
+
+    /// Notify all registered plugins that shutdown is occurring.
+    fn notify_plugins_shutdown(&self, reason: ShutdownReason) {
+        log::debug!(
+            "Notifying {} plugins of shutdown: {reason}",
+            self.plugins.len()
+        );
+        for plugin in &self.plugins {
+            plugin.shutdown();
+        }
+    }
+
+    /// Clean up the socket file created during start().
+    /// Logs errors (except NotFound, which is expected if socket was already cleaned up).
+    fn cleanup_socket(&self) {
+        let Some(uuid) = self.uuid else {
+            log::debug!("No socket to clean up (uuid not set)");
+            return;
+        };
+
+        let socket_path = format!("{}.{}", self.socket_path, uuid);
+        log::debug!("Cleaning up socket: {socket_path}");
+
+        if let Err(e) = std::fs::remove_file(&socket_path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                log::warn!("Failed to remove socket file {socket_path}: {e}");
+            }
+        }
     }
 }
 
