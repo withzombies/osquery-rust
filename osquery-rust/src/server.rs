@@ -9,6 +9,7 @@ use std::time::Duration;
 use strum::VariantNames;
 use thrift::protocol::*;
 use thrift::transport::*;
+use thrift::{ApplicationError, ApplicationErrorKind};
 
 use crate::_osquery as osquery;
 use crate::_osquery::{TExtensionManagerSyncClient, TExtensionSyncClient};
@@ -269,12 +270,12 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
         let mut server =
             thrift::server::TServer::new(i_tr_fact, i_pr_fact, o_tr_fact, o_pr_fact, processor, 10);
 
-        match server.listen_uds(listen_path.clone()) {
-            Ok(_) => {}
-            Err(e) => {
-                log::error!("FATAL: {e} while binding to {listen_path}")
-            }
-        }
+        server.listen_uds(listen_path.clone()).map_err(|e| {
+            thrift::Error::Application(ApplicationError::new(
+                ApplicationErrorKind::InternalError,
+                format!("Failed to bind to {listen_path}: {e}"),
+            ))
+        })?;
         self.server = Some(server);
 
         self.started = true;
