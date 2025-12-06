@@ -111,10 +111,7 @@ pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static> {
     uuid: Option<osquery::ExtensionRouteUUID>,
     // Used to ensure tests wait until the server is actually started
     started: bool,
-    // Shutdown signaling (used in later tasks to fix run() loop)
-    #[allow(dead_code)]
     shutdown_flag: Arc<AtomicBool>,
-    #[allow(dead_code)]
     shutdown_reason: Arc<Mutex<Option<ShutdownReason>>>,
 }
 
