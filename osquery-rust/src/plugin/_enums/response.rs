@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 pub enum ExtensionResponseEnum {
     Success(),
     SuccessWithId(u64),
+    SuccessWithCode(i32),
     Failure(String),
     Constraint(),
     Readonly(),
@@ -23,6 +24,10 @@ impl From<ExtensionResponseEnum> for ExtensionResponse {
                 resp.insert("status".to_string(), "success".to_string());
                 resp.insert("id".to_string(), id.to_string());
                 0
+            }
+            ExtensionResponseEnum::SuccessWithCode(code) => {
+                resp.insert("status".to_string(), "success".to_string());
+                code
             }
             ExtensionResponseEnum::Failure(msg) => {
                 resp.insert("status".to_string(), "failure".to_string());

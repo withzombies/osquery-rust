@@ -117,6 +117,32 @@ pub trait LoggerPlugin: Send + Sync + 'static {
         Ok(())
     }
 
+    /// Returns the features this logger supports.
+    ///
+    /// Override this method to advertise additional capabilities to osquery.
+    /// By default, loggers advertise support for status logs.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use osquery_rust_ng::plugin::{LoggerPlugin, LoggerFeatures};
+    ///
+    /// struct MyLogger;
+    ///
+    /// impl LoggerPlugin for MyLogger {
+    ///     fn name(&self) -> String { "my_logger".to_string() }
+    ///     fn log_string(&self, _: &str) -> Result<(), String> { Ok(()) }
+    ///
+    ///     fn features(&self) -> i32 {
+    ///         // Support both status logs and event forwarding
+    ///         LoggerFeatures::LOG_STATUS | LoggerFeatures::LOG_EVENT
+    ///     }
+    /// }
+    /// ```
+    fn features(&self) -> i32 {
+        LoggerFeatures::LOG_STATUS
+    }
+
     /// Shutdown the logger.
     ///
     /// Called when osquery is shutting down.
@@ -147,6 +173,39 @@ impl fmt::Display for LogStatus {
             self.severity, self.filename, self.line, self.message
         )
     }
+}
+
+/// Feature flags that logger plugins can advertise to osquery.
+///
+/// These flags tell osquery which additional log types the plugin supports.
+/// When osquery sends a `{"action": "features"}` request, the plugin returns
+/// a bitmask of these values in the response status code.
+///
+/// # Example
+///
+/// ```
+/// use osquery_rust_ng::plugin::LoggerFeatures;
+///
+/// // Support both status logs and event forwarding
+/// let features = LoggerFeatures::LOG_STATUS | LoggerFeatures::LOG_EVENT;
+/// assert_eq!(features, 3);
+/// ```
+pub struct LoggerFeatures;
+
+impl LoggerFeatures {
+    /// No additional features - only query results are logged.
+    pub const BLANK: i32 = 0;
+
+    /// Plugin supports receiving osquery status logs (INFO/WARNING/ERROR).
+    ///
+    /// When enabled, osquery forwards its internal Glog status messages
+    /// to the logger plugin via `log_status()`.
+    pub const LOG_STATUS: i32 = 1;
+
+    /// Plugin supports receiving event logs.
+    ///
+    /// When enabled, event subscribers forward events directly to the logger.
+    pub const LOG_EVENT: i32 = 2;
 }
 
 /// Log severity levels used by osquery.
@@ -203,6 +262,8 @@ enum LogRequestType {
     Init(String),
     /// Health check request
     Health,
+    /// Features query - osquery asks what log types we support
+    Features,
 }
 
 /// A single status log entry from osquery
@@ -262,6 +323,15 @@ impl<L: LoggerPlugin> LoggerPluginWrapper<L> {
 
         if request.contains_key("health") {
             return LogRequestType::Health;
+        }
+
+        // Check for features query
+        if request
+            .get("action")
+            .map(|a| a == "features")
+            .unwrap_or(false)
+        {
+            return LogRequestType::Features;
         }
 
         // Fallback for unknown request
@@ -338,6 +408,8 @@ impl<L: LoggerPlugin> LoggerPluginWrapper<L> {
             LogRequestType::Snapshot(s) => self.logger.log_snapshot(&s),
             LogRequestType::Init(name) => self.logger.init(&name),
             LogRequestType::Health => self.logger.health(),
+            // Features is handled specially in handle_call before this is called
+            LogRequestType::Features => Ok(()),
         }
     }
 }
@@ -365,6 +437,11 @@ impl<L: LoggerPlugin> OsqueryPlugin for LoggerPluginWrapper<L> {
         // Parse the request into a structured type
         let request_type = self.parse_request(&request);
 
+        // Features request needs special handling - return features as status code
+        if matches!(request_type, LogRequestType::Features) {
+            return ExtensionResponseEnum::SuccessWithCode(self.logger.features()).into();
+        }
+
         // Handle the request and return the appropriate response
         match self.handle_log_request(request_type) {
             Ok(()) => ExtensionResponseEnum::Success().into(),
@@ -374,5 +451,124 @@ impl<L: LoggerPlugin> OsqueryPlugin for LoggerPluginWrapper<L> {
 
     fn shutdown(&self) {
         self.logger.shutdown();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugin::OsqueryPlugin;
+    use std::collections::BTreeMap;
+
+    /// A minimal logger for testing
+    struct TestLogger {
+        custom_features: Option<i32>,
+    }
+
+    impl TestLogger {
+        fn new() -> Self {
+            Self {
+                custom_features: None,
+            }
+        }
+
+        fn with_features(features: i32) -> Self {
+            Self {
+                custom_features: Some(features),
+            }
+        }
+    }
+
+    impl LoggerPlugin for TestLogger {
+        fn name(&self) -> String {
+            "test_logger".to_string()
+        }
+
+        fn log_string(&self, _message: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn features(&self) -> i32 {
+            self.custom_features.unwrap_or(LoggerFeatures::LOG_STATUS)
+        }
+    }
+
+    #[test]
+    fn test_features_request_returns_default_log_status() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        // Simulate osquery sending {"action": "features"}
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("action".to_string(), "features".to_string());
+
+        let response = wrapper.handle_call(request);
+
+        // The status code should be LOG_STATUS (1)
+        let status = response.status.as_ref();
+        assert!(status.is_some(), "response should have status");
+        assert_eq!(
+            status.and_then(|s| s.code),
+            Some(LoggerFeatures::LOG_STATUS)
+        );
+    }
+
+    #[test]
+    fn test_features_request_returns_custom_features() {
+        // Logger that supports both status logs and event forwarding
+        let features = LoggerFeatures::LOG_STATUS | LoggerFeatures::LOG_EVENT;
+        let logger = TestLogger::with_features(features);
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("action".to_string(), "features".to_string());
+
+        let response = wrapper.handle_call(request);
+
+        // The status code should be 3 (LOG_STATUS | LOG_EVENT)
+        let status = response.status.as_ref();
+        assert!(status.is_some(), "response should have status");
+        assert_eq!(status.and_then(|s| s.code), Some(3));
+    }
+
+    #[test]
+    fn test_features_request_returns_blank_when_no_features() {
+        let logger = TestLogger::with_features(LoggerFeatures::BLANK);
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("action".to_string(), "features".to_string());
+
+        let response = wrapper.handle_call(request);
+
+        // The status code should be 0 (BLANK)
+        let status = response.status.as_ref();
+        assert!(status.is_some(), "response should have status");
+        assert_eq!(status.and_then(|s| s.code), Some(LoggerFeatures::BLANK));
+    }
+
+    #[test]
+    fn test_parse_request_recognizes_features_action() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("action".to_string(), "features".to_string());
+
+        let request_type = wrapper.parse_request(&request);
+        assert!(matches!(request_type, LogRequestType::Features));
+    }
+
+    #[test]
+    fn test_parse_request_ignores_other_actions() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("action".to_string(), "unknown".to_string());
+
+        let request_type = wrapper.parse_request(&request);
+        // Should fall through to default (RawString)
+        assert!(matches!(request_type, LogRequestType::RawString(_)));
     }
 }

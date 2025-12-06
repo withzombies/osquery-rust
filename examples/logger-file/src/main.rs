@@ -3,7 +3,7 @@ mod cli;
 use chrono::Local;
 use clap::Parser;
 use log::info;
-use osquery_rust_ng::plugin::{LogSeverity, LogStatus, LoggerPlugin, Plugin};
+use osquery_rust_ng::plugin::{LogSeverity, LogStatus, LoggerFeatures, LoggerPlugin, Plugin};
 use osquery_rust_ng::prelude::*;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -145,6 +145,10 @@ impl LoggerPlugin for FileLoggerPlugin {
             let _ = file.write_all(formatted.as_bytes());
             let _ = file.flush();
         }
+    }
+
+    fn features(&self) -> i32 {
+        LoggerFeatures::LOG_STATUS
     }
 }
 
