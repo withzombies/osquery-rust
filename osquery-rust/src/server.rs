@@ -478,11 +478,13 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
 
 impl<P: OsqueryPlugin + Clone> osquery::ExtensionManagerSyncHandler for Handler<P> {
     fn handle_extensions(&self) -> thrift::Result<osquery::InternalExtensionList> {
-        todo!()
+        // Extension management not supported - return empty list
+        Ok(osquery::InternalExtensionList::new())
     }
 
     fn handle_options(&self) -> thrift::Result<osquery::InternalOptionList> {
-        todo!()
+        // Extension options not supported - return empty list
+        Ok(osquery::InternalOptionList::new())
     }
 
     fn handle_register_extension(
@@ -490,21 +492,47 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionManagerSyncHandler for Handler<
         _info: osquery::InternalExtensionInfo,
         _registry: osquery::ExtensionRegistry,
     ) -> thrift::Result<osquery::ExtensionStatus> {
-        todo!()
+        // Nested extension registration not supported
+        Ok(osquery::ExtensionStatus {
+            code: Some(1),
+            message: Some("Extension registration not supported".to_string()),
+            uuid: None,
+        })
     }
 
     fn handle_deregister_extension(
         &self,
         _uuid: osquery::ExtensionRouteUUID,
     ) -> thrift::Result<osquery::ExtensionStatus> {
-        todo!()
+        // Nested extension deregistration not supported
+        Ok(osquery::ExtensionStatus {
+            code: Some(1),
+            message: Some("Extension deregistration not supported".to_string()),
+            uuid: None,
+        })
     }
 
     fn handle_query(&self, _sql: String) -> thrift::Result<osquery::ExtensionResponse> {
-        todo!()
+        // Query execution not supported
+        Ok(osquery::ExtensionResponse::new(
+            osquery::ExtensionStatus {
+                code: Some(1),
+                message: Some("Query execution not supported".to_string()),
+                uuid: None,
+            },
+            vec![],
+        ))
     }
 
     fn handle_get_query_columns(&self, _sql: String) -> thrift::Result<osquery::ExtensionResponse> {
-        todo!()
+        // Query column introspection not supported
+        Ok(osquery::ExtensionResponse::new(
+            osquery::ExtensionStatus {
+                code: Some(1),
+                message: Some("Query column introspection not supported".to_string()),
+                uuid: None,
+            },
+            vec![],
+        ))
     }
 }
