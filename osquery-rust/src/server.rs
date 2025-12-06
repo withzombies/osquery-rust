@@ -190,8 +190,12 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
         // signal_hook::flag::register atomically sets the bool when signal received.
         // Errors are rare (e.g., invalid signal number) and non-fatal - signals
         // just won't trigger shutdown, but other shutdown mechanisms still work.
-        let _ = flag::register(SIGINT, self.shutdown_flag.clone());
-        let _ = flag::register(SIGTERM, self.shutdown_flag.clone());
+        if let Err(e) = flag::register(SIGINT, self.shutdown_flag.clone()) {
+            log::warn!("Failed to register SIGINT handler: {e}");
+        }
+        if let Err(e) = flag::register(SIGTERM, self.shutdown_flag.clone()) {
+            log::warn!("Failed to register SIGTERM handler: {e}");
+        }
 
         self.start()?;
         self.run_loop();
