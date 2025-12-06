@@ -38,57 +38,68 @@ The project uses a workspace structure with the main library and several example
 
 ## Quick Start
 
-Here's a simple example of creating a table plugin that reports system uptime:
+Here's a simple example of creating a read-only table plugin:
 
 ```rust
 use osquery_rust_ng::prelude::*;
+use osquery_rust_ng::plugin::{ColumnDef, ColumnType, ColumnOptions, Plugin, ReadOnlyTable};
+use std::collections::BTreeMap;
 
-#[derive(Default)]
-struct UptimeTable;
+struct MyTable;
 
-impl ReadOnlyTable for UptimeTable {
-    fn name(&self) -> &str {
-        "uptime"
+impl ReadOnlyTable for MyTable {
+    fn name(&self) -> String {
+        "my_table".to_string()
     }
 
     fn columns(&self) -> Vec<ColumnDef> {
         vec![
-            ColumnDef::new("days", ColumnType::Integer),
-            ColumnDef::new("hours", ColumnType::Integer),
-            ColumnDef::new("minutes", ColumnType::Integer),
-            ColumnDef::new("seconds", ColumnType::Integer),
+            ColumnDef::new("greeting", ColumnType::Text, ColumnOptions::DEFAULT),
+            ColumnDef::new("count", ColumnType::Integer, ColumnOptions::DEFAULT),
         ]
     }
 
-    fn generate(&self, _constraints: &QueryConstraints) -> Result<Vec<Row>, String> {
-        let uptime_seconds = std::fs::read_to_string("/proc/uptime")
-            .map_err(|e| e.to_string())?
-            .split_whitespace()
-            .next()
-            .ok_or("Failed to parse uptime")?
-            .parse::<f64>()
-            .map_err(|e| e.to_string())? as u64;
+    fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
+        let row = BTreeMap::from([
+            ("greeting".to_string(), "Hello, osquery!".to_string()),
+            ("count".to_string(), "42".to_string()),
+        ]);
+        ExtensionResponse::new(ExtensionStatus::default(), vec![row])
+    }
 
-        let days = uptime_seconds / 86400;
-        let hours = (uptime_seconds % 86400) / 3600;
-        let minutes = (uptime_seconds % 3600) / 60;
-        let seconds = uptime_seconds % 60;
-
-        Ok(vec![Row::from_iter([
-            ("days", days.to_string()),
-            ("hours", hours.to_string()),
-            ("minutes", minutes.to_string()),
-            ("seconds", seconds.to_string()),
-        ])])
+    fn shutdown(&self) {
+        // Called when the extension is shutting down
     }
 }
 
-fn main() {
-    let mut server = Server::new(None, "/path/to/osquery/socket").unwrap();
-    server.register_plugin(Plugin::table(UptimeTable::default()));
-    server.run().unwrap();
+fn main() -> std::io::Result<()> {
+    let mut server = Server::new(None, "/path/to/osquery/socket")?;
+    server.register_plugin(Plugin::readonly_table(MyTable));
+    server.run().map_err(std::io::Error::other)
 }
 ```
+
+## Migrating to 2.0
+
+Version 2.0 simplifies the shutdown API by removing `ShutdownReason`. If upgrading from 1.x:
+
+**Before (1.x):**
+```rust
+fn shutdown(&self, reason: ShutdownReason) {
+    println!("Shutting down: {reason}");
+}
+```
+
+**After (2.0):**
+```rust
+fn shutdown(&self) {
+    println!("Shutting down");
+}
+```
+
+This affects all plugin traits: `ReadOnlyTable`, `Table`, `LoggerPlugin`, and `ConfigPlugin`.
+
+The `Server::stop()` and `ServerStopHandle::stop()` methods also no longer take a reason parameter.
 
 ## Usage Guide
 
@@ -99,14 +110,12 @@ Table plugins allow you to expose data as SQL tables in osquery. There are two t
 1. **Read-only tables** - Implement the `ReadOnlyTable` trait
 2. **Writable tables** - Implement the `Table` trait for full CRUD operations
 
-See the [examples](examples/) directory for complete implementations.
-
 ### Creating Logger Plugins
 
 Logger plugins receive log data from osquery and can forward it to various backends:
 
 ```rust
-use osquery_rust_ng::plugin::{LoggerPlugin, LogStatus};
+use osquery_rust_ng::plugin::{LoggerPlugin, LogStatus, LoggerFeatures};
 
 struct MyLogger;
 
@@ -121,12 +130,23 @@ impl LoggerPlugin for MyLogger {
     }
 
     fn log_status(&self, status: &LogStatus) -> Result<(), String> {
-        println!("[{}] {}:{} - {}", 
+        println!("[{}] {}:{} - {}",
             status.severity, status.filename, status.line, status.message);
         Ok(())
     }
+
+    // Advertise support for status logs (enabled by default)
+    fn features(&self) -> i32 {
+        LoggerFeatures::LOG_STATUS
+    }
 }
 ```
+
+The `features()` method tells osquery what log types your plugin supports. By default, loggers receive status logs (INFO/WARNING/ERROR from osquery internals). Available features:
+
+- `LoggerFeatures::BLANK` - Query results only
+- `LoggerFeatures::LOG_STATUS` - Status logs (default)
+- `LoggerFeatures::LOG_EVENT` - Event logs
 
 ### Creating Config Plugins
 
@@ -179,7 +199,51 @@ There are three ways to run your extension:
 2. **Socket connection**: Run extension separately with `--socket /path/to/osquery.sock`
 3. **Auto-loading**: Place extension in osquery's autoload directory
 
-See the [examples README](examples/README.md) for detailed integration instructions.
+See the [examples](examples/) directory for complete implementations.
+
+### Graceful Shutdown
+
+Extensions support graceful shutdown through multiple mechanisms:
+
+**Signal Handling (recommended for production)**
+
+Use `run_with_signal_handling()` to automatically handle SIGTERM and SIGINT:
+
+```rust
+fn main() -> std::io::Result<()> {
+    let mut server = Server::new(None, "/path/to/socket")?;
+    server.register_plugin(Plugin::readonly_table(MyTable));
+
+    // Handles SIGTERM (systemd) and SIGINT (Ctrl+C)
+    server.run_with_signal_handling().map_err(std::io::Error::other)
+}
+```
+
+**Programmatic Shutdown**
+
+Use `ServerStopHandle` to stop the server from another thread:
+
+```rust
+let mut server = Server::new(None, "/path/to/socket")?;
+let handle = server.get_stop_handle();
+
+// In another thread or signal handler:
+std::thread::spawn(move || {
+    // ... wait for condition ...
+    handle.stop();
+});
+
+server.run()?;
+```
+
+**Shutdown Lifecycle**
+
+When shutdown is triggered (via signal, osquery RPC, or `stop()`):
+
+1. The server deregisters from osquery
+2. All plugins receive a `shutdown()` callback
+3. The socket file is cleaned up
+4. `run()` returns
 
 ## Examples
 
@@ -260,9 +324,8 @@ The project is organized as a Cargo workspace:
 
 ## Additional Resources
 
-- Tutorial: [osquery-rust tutorial](https://github.com/withzombies/osquery-rust/tree/main/tutorial)
 - Examples: [osquery-rust by example](https://github.com/withzombies/osquery-rust/tree/main/examples)
-- Documentation: [docs.rs/osquery-rust](https://docs.rs/osquery-rust)
+- API Documentation: [docs.rs/osquery-rust-ng](https://docs.rs/osquery-rust-ng)
 
 ## Related Projects
 
