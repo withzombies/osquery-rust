@@ -137,9 +137,9 @@ impl LoggerPlugin for FileLoggerPlugin {
         Ok(())
     }
 
-    fn shutdown(&self, reason: ShutdownReason) {
+    fn shutdown(&self) {
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-        let formatted = format!("[{timestamp}] === Logger shutting down: {reason} ===\n");
+        let formatted = format!("[{timestamp}] === Logger shutting down ===\n");
 
         if let Ok(mut file) = self.log_file.lock() {
             let _ = file.write_all(formatted.as_bytes());

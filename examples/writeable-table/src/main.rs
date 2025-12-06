@@ -5,9 +5,7 @@ use clap::{Parser, crate_name};
 use log::info;
 use osquery_rust_ng::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, Table};
 use osquery_rust_ng::plugin::{DeleteResult, InsertResult, UpdateResult};
-use osquery_rust_ng::{
-    ExtensionPluginRequest, ExtensionResponse, ExtensionStatus, Server, ShutdownReason,
-};
+use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus, Server};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io::{Error, ErrorKind};
@@ -132,8 +130,8 @@ impl Table for WriteableTable {
 
         InsertResult::Success(rowid)
     }
-    fn shutdown(&self, reason: ShutdownReason) {
-        info!("Shutting down: {reason}");
+    fn shutdown(&self) {
+        info!("Shutting down");
     }
 }
 

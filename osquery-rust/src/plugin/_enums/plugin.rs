@@ -5,7 +5,6 @@ use crate::plugin::logger::{LoggerPlugin, LoggerPluginWrapper};
 use crate::plugin::table::{ReadOnlyTable, TablePlugin};
 use crate::plugin::Registry;
 use crate::plugin::{OsqueryPlugin, Table};
-use crate::shutdown::ShutdownReason;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -85,11 +84,11 @@ impl OsqueryPlugin for Plugin {
     }
 
     // Shutdown notifies the plugin to stop.
-    fn shutdown(&self, reason: ShutdownReason) {
+    fn shutdown(&self) {
         match self {
-            Plugin::Config(c) => c.shutdown(reason),
-            Plugin::Logger(l) => l.shutdown(reason),
-            Plugin::Table(t) => t.shutdown(reason),
+            Plugin::Config(c) => c.shutdown(),
+            Plugin::Logger(l) => l.shutdown(),
+            Plugin::Table(t) => t.shutdown(),
         }
     }
 }

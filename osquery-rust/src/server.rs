@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use strum::VariantNames;
@@ -15,7 +15,6 @@ use crate::_osquery as osquery;
 use crate::_osquery::{TExtensionManagerSyncClient, TExtensionSyncClient};
 use crate::client::Client;
 use crate::plugin::{OsqueryPlugin, Plugin, Registry};
-use crate::shutdown::ShutdownReason;
 use crate::util::OptionToThriftResult;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -29,7 +28,7 @@ const DEFAULT_PING_INTERVAL: Duration = Duration::from_millis(5000);
 /// # Thread Safety
 ///
 /// `ServerStopHandle` is `Clone + Send + Sync` and can be safely shared between
-/// threads. Multiple calls to `stop()` are safe - only the first reason is recorded.
+/// threads. Multiple calls to `stop()` are safe and idempotent.
 ///
 /// # Example
 ///
@@ -40,7 +39,7 @@ const DEFAULT_PING_INTERVAL: Duration = Duration::from_millis(5000);
 /// // In another thread:
 /// std::thread::spawn(move || {
 ///     // ... some condition ...
-///     handle.stop(ShutdownReason::ApplicationRequested);
+///     handle.stop();
 /// });
 ///
 /// server.run()?; // Will exit when stop() is called
@@ -48,29 +47,15 @@ const DEFAULT_PING_INTERVAL: Duration = Duration::from_millis(5000);
 #[derive(Clone)]
 pub struct ServerStopHandle {
     shutdown_flag: Arc<AtomicBool>,
-    shutdown_reason: Arc<Mutex<Option<ShutdownReason>>>,
 }
 
 impl ServerStopHandle {
-    /// Request the server to stop with the given reason.
+    /// Request the server to stop.
     ///
-    /// This method is idempotent - multiple calls are safe, but only the first
-    /// reason is recorded. The server will exit its run loop on the next iteration.
-    pub fn stop(&self, reason: ShutdownReason) {
-        // Store reason first (only if not already set - first reason wins)
-        // Recover from poisoning since setting an Option is a simple atomic update
-        let mut guard = match self.shutdown_reason.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                log::warn!("Shutdown reason mutex was poisoned, recovering");
-                poisoned.into_inner()
-            }
-        };
-        if guard.is_none() {
-            *guard = Some(reason);
-        }
-        // Then set the flag (ensures reason is visible when flag is true)
-        self.shutdown_flag.store(true, Ordering::SeqCst);
+    /// This method is idempotent - multiple calls are safe.
+    /// The server will exit its run loop on the next iteration.
+    pub fn stop(&self) {
+        self.shutdown_flag.store(true, Ordering::Release);
     }
 
     /// Check if the server is still running.
@@ -78,7 +63,7 @@ impl ServerStopHandle {
     /// Returns `true` if the server has not been requested to stop,
     /// `false` if `stop()` has been called.
     pub fn is_running(&self) -> bool {
-        !self.shutdown_flag.load(Ordering::SeqCst)
+        !self.shutdown_flag.load(Ordering::Acquire)
     }
 }
 
@@ -107,12 +92,10 @@ pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static> {
     #[allow(dead_code)]
     timeout: Duration,
     ping_interval: Duration,
-    //mutex: Mutex<u32>,
     uuid: Option<osquery::ExtensionRouteUUID>,
     // Used to ensure tests wait until the server is actually started
     started: bool,
     shutdown_flag: Arc<AtomicBool>,
-    shutdown_reason: Arc<Mutex<Option<ShutdownReason>>>,
 }
 
 impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
@@ -138,7 +121,6 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
             uuid: None,
             started: false,
             shutdown_flag: Arc::new(AtomicBool::new(false)),
-            shutdown_reason: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -202,24 +184,6 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
 
         self.start()?;
         self.run_loop();
-
-        // Set reason to SignalReceived if no other reason was set.
-        // signal_hook only sets the flag, not our reason, so we detect this case
-        // by checking if reason is still None after the loop exits.
-        // Recover from poisoning since setting an Option is a simple atomic update.
-        {
-            let mut guard = match self.shutdown_reason.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    log::warn!("Shutdown reason mutex was poisoned, recovering");
-                    poisoned.into_inner()
-                }
-            };
-            if guard.is_none() {
-                *guard = Some(ShutdownReason::SignalReceived);
-            }
-        }
-
         self.shutdown_and_cleanup();
         Ok(())
     }
@@ -228,8 +192,8 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
     fn run_loop(&mut self) {
         while !self.should_shutdown() {
             if let Err(e) = self.client.ping() {
-                log::warn!("Ping failed: {e}");
-                self.request_shutdown(ShutdownReason::ConnectionLost);
+                log::warn!("Ping failed, initiating shutdown: {e}");
+                self.request_shutdown();
                 break;
             }
             thread::sleep(self.ping_interval);
@@ -238,17 +202,16 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
 
     /// Common shutdown logic: deregister, notify plugins, cleanup socket.
     fn shutdown_and_cleanup(&mut self) {
-        let reason = self.get_shutdown_reason();
-        log::info!("Shutting down: {reason}");
+        log::info!("Shutting down");
 
         // Deregister from osquery (best-effort, allows faster cleanup than timeout)
         if let Some(uuid) = self.uuid {
             if let Err(e) = self.client.deregister_extension(uuid) {
-                log::debug!("Failed to deregister from osquery: {e}");
+                log::warn!("Failed to deregister from osquery: {e}");
             }
         }
 
-        self.notify_plugins_shutdown(reason);
+        self.notify_plugins_shutdown();
         self.cleanup_socket();
     }
 
@@ -279,7 +242,6 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
         let processor = osquery::ExtensionManagerSyncProcessor::new(Handler::new(
             &self.plugins,
             self.shutdown_flag.clone(),
-            self.shutdown_reason.clone(),
         )?);
         let i_tr_fact: Box<dyn TReadTransportFactory> =
             Box::new(TBufferedReadTransportFactory::new());
@@ -324,48 +286,22 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
 
     /// Check if shutdown has been requested.
     fn should_shutdown(&self) -> bool {
-        self.shutdown_flag.load(Ordering::SeqCst)
+        self.shutdown_flag.load(Ordering::Acquire)
     }
 
-    /// Request shutdown with a specific reason.
-    /// Sets the reason (if not already set) and then sets the shutdown flag.
-    fn request_shutdown(&self, reason: ShutdownReason) {
-        // Store reason first (only if not already set)
-        // Recover from poisoning since setting an Option is a simple atomic update
-        let mut guard = match self.shutdown_reason.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                log::warn!("Shutdown reason mutex was poisoned, recovering");
-                poisoned.into_inner()
-            }
-        };
-        if guard.is_none() {
-            *guard = Some(reason);
-        }
-        // Then set the flag (ensures reason is visible when flag is true)
-        self.shutdown_flag.store(true, Ordering::SeqCst);
-    }
-
-    /// Get the shutdown reason, or default if none set.
-    fn get_shutdown_reason(&self) -> ShutdownReason {
-        self.shutdown_reason
-            .lock()
-            .ok()
-            .and_then(|guard| *guard)
-            .unwrap_or_default()
+    /// Request shutdown by setting the shutdown flag.
+    fn request_shutdown(&self) {
+        self.shutdown_flag.store(true, Ordering::Release);
     }
 
     /// Notify all registered plugins that shutdown is occurring.
     /// Uses catch_unwind to ensure all plugins are notified even if one panics.
-    fn notify_plugins_shutdown(&self, reason: ShutdownReason) {
-        log::debug!(
-            "Notifying {} plugins of shutdown: {reason}",
-            self.plugins.len()
-        );
+    fn notify_plugins_shutdown(&self) {
+        log::debug!("Notifying {} plugins of shutdown", self.plugins.len());
         for plugin in &self.plugins {
             let plugin_name = plugin.name();
             if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                plugin.shutdown(reason);
+                plugin.shutdown();
             })) {
                 log::error!("Plugin '{plugin_name}' panicked during shutdown: {e:?}");
             }
@@ -398,17 +334,16 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
     pub fn get_stop_handle(&self) -> ServerStopHandle {
         ServerStopHandle {
             shutdown_flag: self.shutdown_flag.clone(),
-            shutdown_reason: self.shutdown_reason.clone(),
         }
     }
 
-    /// Request the server to stop with the given reason.
+    /// Request the server to stop.
     ///
     /// This is a convenience method equivalent to calling `stop()` on a
     /// `ServerStopHandle`. The server will exit its `run()` loop on the next
     /// iteration.
-    pub fn stop(&self, reason: ShutdownReason) {
-        self.request_shutdown(reason);
+    pub fn stop(&self) {
+        self.request_shutdown();
     }
 
     /// Check if the server is still running.
@@ -424,15 +359,10 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
 struct Handler<P: OsqueryPlugin + Clone> {
     registry: HashMap<String, HashMap<String, P>>,
     shutdown_flag: Arc<AtomicBool>,
-    shutdown_reason: Arc<Mutex<Option<ShutdownReason>>>,
 }
 
 impl<P: OsqueryPlugin + Clone> Handler<P> {
-    fn new(
-        plugins: &[P],
-        shutdown_flag: Arc<AtomicBool>,
-        shutdown_reason: Arc<Mutex<Option<ShutdownReason>>>,
-    ) -> thrift::Result<Self> {
+    fn new(plugins: &[P], shutdown_flag: Arc<AtomicBool>) -> thrift::Result<Self> {
         let mut reg: HashMap<String, HashMap<String, P>> = HashMap::new();
         for var in Registry::VARIANTS {
             reg.insert((*var).to_string(), HashMap::new());
@@ -447,7 +377,6 @@ impl<P: OsqueryPlugin + Clone> Handler<P> {
         Ok(Handler {
             registry: reg,
             shutdown_flag,
-            shutdown_reason,
         })
     }
 }
@@ -489,24 +418,8 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
     }
 
     fn handle_shutdown(&self) -> thrift::Result<()> {
-        log::trace!("Shutdown RPC received from osquery");
-
-        // Just signal the run() loop to exit - plugins will be notified
-        // in shutdown_and_cleanup() with the correct reason.
-        // Recover from poisoning since setting an Option is a simple atomic update.
-        let mut guard = match self.shutdown_reason.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                log::warn!("Shutdown reason mutex was poisoned, recovering");
-                poisoned.into_inner()
-            }
-        };
-        if guard.is_none() {
-            *guard = Some(ShutdownReason::OsqueryRequested);
-        }
-        drop(guard);
-        self.shutdown_flag.store(true, Ordering::SeqCst);
-
+        log::debug!("Shutdown RPC received from osquery");
+        self.shutdown_flag.store(true, Ordering::Release);
         Ok(())
     }
 }

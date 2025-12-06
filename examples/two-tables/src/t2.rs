@@ -2,7 +2,7 @@ use log::info;
 use osquery_rust_ng::plugin::{
     ColumnDef, ColumnOptions, ColumnType, DeleteResult, InsertResult, Table, UpdateResult,
 };
-use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus, ShutdownReason};
+use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -47,7 +47,7 @@ impl Table for Table2 {
         InsertResult::Constraint
     }
 
-    fn shutdown(&self, reason: ShutdownReason) {
-        info!("Table2 shutting down: {reason}");
+    fn shutdown(&self) {
+        info!("Table2 shutting down");
     }
 }

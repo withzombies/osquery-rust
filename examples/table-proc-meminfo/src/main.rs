@@ -66,8 +66,8 @@ impl ReadOnlyTable for ProcMemInfoTable {
         ExtensionResponse::new(ExtensionStatus::default(), resp)
     }
 
-    fn shutdown(&self, reason: ShutdownReason) {
-        info!("Shutting down: {reason}");
+    fn shutdown(&self) {
+        info!("Shutting down");
     }
 }
 

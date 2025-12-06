@@ -148,9 +148,9 @@ impl LoggerPlugin for SyslogLoggerPlugin {
         Ok(())
     }
 
-    fn shutdown(&self, reason: ShutdownReason) {
+    fn shutdown(&self) {
         if let Ok(mut logger) = self.logger.lock() {
-            let _ = logger.notice(&format!("Logger shutting down: {reason}"));
+            let _ = logger.notice("Logger shutting down");
         }
     }
 }
