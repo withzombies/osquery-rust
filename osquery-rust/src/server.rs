@@ -58,10 +58,16 @@ impl ServerStopHandle {
     /// reason is recorded. The server will exit its run loop on the next iteration.
     pub fn stop(&self, reason: ShutdownReason) {
         // Store reason first (only if not already set - first reason wins)
-        if let Ok(mut guard) = self.shutdown_reason.lock() {
-            if guard.is_none() {
-                *guard = Some(reason);
+        // Recover from poisoning since setting an Option is a simple atomic update
+        let mut guard = match self.shutdown_reason.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log::warn!("Shutdown reason mutex was poisoned, recovering");
+                poisoned.into_inner()
             }
+        };
+        if guard.is_none() {
+            *guard = Some(reason);
         }
         // Then set the flag (ensures reason is visible when flag is true)
         self.shutdown_flag.store(true, Ordering::SeqCst);
@@ -203,10 +209,16 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
         // Set reason to SignalReceived if no other reason was set.
         // signal_hook only sets the flag, not our reason, so we detect this case
         // by checking if reason is still None after the loop exits.
-        if let Ok(mut guard) = self.shutdown_reason.lock() {
-            if guard.is_none() {
-                *guard = Some(ShutdownReason::SignalReceived);
+        // Recover from poisoning since setting an Option is a simple atomic update.
+        let mut guard = match self.shutdown_reason.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log::warn!("Shutdown reason mutex was poisoned, recovering");
+                poisoned.into_inner()
             }
+        };
+        if guard.is_none() {
+            *guard = Some(ShutdownReason::SignalReceived);
         }
 
         self.shutdown_and_cleanup();
@@ -312,10 +324,16 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
     /// Sets the reason (if not already set) and then sets the shutdown flag.
     fn request_shutdown(&self, reason: ShutdownReason) {
         // Store reason first (only if not already set)
-        if let Ok(mut guard) = self.shutdown_reason.lock() {
-            if guard.is_none() {
-                *guard = Some(reason);
+        // Recover from poisoning since setting an Option is a simple atomic update
+        let mut guard = match self.shutdown_reason.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log::warn!("Shutdown reason mutex was poisoned, recovering");
+                poisoned.into_inner()
             }
+        };
+        if guard.is_none() {
+            *guard = Some(reason);
         }
         // Then set the flag (ensures reason is visible when flag is true)
         self.shutdown_flag.store(true, Ordering::SeqCst);
@@ -461,12 +479,19 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
         log::trace!("Shutdown RPC received from osquery");
 
         // Just signal the run() loop to exit - plugins will be notified
-        // in shutdown_and_cleanup() with the correct reason
-        if let Ok(mut guard) = self.shutdown_reason.lock() {
-            if guard.is_none() {
-                *guard = Some(ShutdownReason::OsqueryRequested);
+        // in shutdown_and_cleanup() with the correct reason.
+        // Recover from poisoning since setting an Option is a simple atomic update.
+        let mut guard = match self.shutdown_reason.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log::warn!("Shutdown reason mutex was poisoned, recovering");
+                poisoned.into_inner()
             }
+        };
+        if guard.is_none() {
+            *guard = Some(ShutdownReason::OsqueryRequested);
         }
+        drop(guard);
         self.shutdown_flag.store(true, Ordering::SeqCst);
 
         Ok(())
