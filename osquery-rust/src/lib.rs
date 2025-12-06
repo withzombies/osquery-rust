@@ -8,7 +8,7 @@ pub mod plugin;
 pub(crate) mod server;
 mod util;
 
-pub use crate::server::Server;
+pub use crate::server::{Server, ServerStopHandle};
 
 // Re-exports
 pub type ExtensionResponse = _osquery::osquery::ExtensionResponse;
@@ -24,7 +24,11 @@ pub type ExtensionStatus = _osquery::osquery::ExtensionStatus;
 /// ```
 pub mod prelude {
     pub use crate::Server;
+    pub use crate::ServerStopHandle;
     pub use crate::{
         ExtensionPluginRequest, ExtensionPluginResponse, ExtensionResponse, ExtensionStatus,
     };
 }
+
+#[cfg(test)]
+mod server_tests;

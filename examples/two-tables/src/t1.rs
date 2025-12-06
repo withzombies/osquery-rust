@@ -1,7 +1,7 @@
+use log::info;
 use osquery_rust_ng::plugin::{ColumnDef, ColumnOptions, ColumnType, ReadOnlyTable};
 use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus};
 use std::collections::BTreeMap;
-use std::process::exit;
 
 pub struct Table1 {}
 
@@ -33,6 +33,6 @@ impl ReadOnlyTable for Table1 {
     }
 
     fn shutdown(&self) {
-        exit(0)
+        info!("Table1 shutting down");
     }
 }

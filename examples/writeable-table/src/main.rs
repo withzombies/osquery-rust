@@ -2,6 +2,7 @@ mod cli;
 
 use crate::cli::Args;
 use clap::{Parser, crate_name};
+use log::info;
 use osquery_rust_ng::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, Table};
 use osquery_rust_ng::plugin::{DeleteResult, InsertResult, UpdateResult};
 use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus, Server};
@@ -130,8 +131,7 @@ impl Table for WriteableTable {
         InsertResult::Success(rowid)
     }
     fn shutdown(&self) {
-        log::info!("shutting down");
-        std::process::exit(0);
+        info!("Shutting down");
     }
 }
 

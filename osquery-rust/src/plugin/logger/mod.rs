@@ -145,7 +145,7 @@ pub trait LoggerPlugin: Send + Sync + 'static {
 
     /// Shutdown the logger.
     ///
-    /// Called when osquery is shutting down.
+    /// Called when the extension is shutting down.
     fn shutdown(&self) {}
 }
 

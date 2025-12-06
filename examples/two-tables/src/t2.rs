@@ -1,10 +1,10 @@
+use log::info;
 use osquery_rust_ng::plugin::{
     ColumnDef, ColumnOptions, ColumnType, DeleteResult, InsertResult, Table, UpdateResult,
 };
 use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus};
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::process::exit;
 
 pub struct Table2 {}
 
@@ -48,6 +48,6 @@ impl Table for Table2 {
     }
 
     fn shutdown(&self) {
-        exit(0)
+        info!("Table2 shutting down");
     }
 }

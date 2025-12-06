@@ -2,6 +2,7 @@ mod cli;
 
 use clap::crate_name;
 use clap::Parser;
+use log::info;
 use osquery_rust_ng::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, ReadOnlyTable};
 use osquery_rust_ng::prelude::*;
 use std::collections::BTreeMap;
@@ -66,7 +67,7 @@ impl ReadOnlyTable for ProcMemInfoTable {
     }
 
     fn shutdown(&self) {
-        println!("Shutting down");
+        info!("Shutting down");
     }
 }
 

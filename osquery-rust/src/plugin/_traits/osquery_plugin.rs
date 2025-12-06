@@ -1,4 +1,5 @@
 use crate::plugin::Registry;
+
 pub trait OsqueryPlugin: Send + Sync {
     fn name(&self) -> String;
     fn registry(&self) -> Registry;

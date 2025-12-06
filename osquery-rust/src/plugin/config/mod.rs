@@ -26,7 +26,7 @@ pub trait ConfigPlugin: Send + Sync + 'static {
         Err(format!("Pack '{name}' not found"))
     }
 
-    /// Called when the plugin is shutting down
+    /// Called when the plugin is shutting down.
     fn shutdown(&self) {}
 }
 
