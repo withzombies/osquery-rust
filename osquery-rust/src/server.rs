@@ -456,21 +456,13 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
     fn handle_shutdown(&self) -> thrift::Result<()> {
         log::trace!("Shutdown RPC received from osquery");
 
-        // Notify all plugins with OsqueryRequested reason
-        self.registry.iter().for_each(|(_, v)| {
-            v.iter().for_each(|(_, p)| {
-                p.shutdown(ShutdownReason::OsqueryRequested);
-            });
-        });
-
-        // Signal the run() loop to exit
-        // Set reason first (only if not already set - first reason wins)
+        // Just signal the run() loop to exit - plugins will be notified
+        // in shutdown_and_cleanup() with the correct reason
         if let Ok(mut guard) = self.shutdown_reason.lock() {
             if guard.is_none() {
                 *guard = Some(ShutdownReason::OsqueryRequested);
             }
         }
-        // Then set the flag (ensures reason is visible when flag is true)
         self.shutdown_flag.store(true, Ordering::SeqCst);
 
         Ok(())
