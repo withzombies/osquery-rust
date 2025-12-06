@@ -210,15 +210,17 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
         // signal_hook only sets the flag, not our reason, so we detect this case
         // by checking if reason is still None after the loop exits.
         // Recover from poisoning since setting an Option is a simple atomic update.
-        let mut guard = match self.shutdown_reason.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                log::warn!("Shutdown reason mutex was poisoned, recovering");
-                poisoned.into_inner()
+        {
+            let mut guard = match self.shutdown_reason.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    log::warn!("Shutdown reason mutex was poisoned, recovering");
+                    poisoned.into_inner()
+                }
+            };
+            if guard.is_none() {
+                *guard = Some(ShutdownReason::SignalReceived);
             }
-        };
-        if guard.is_none() {
-            *guard = Some(ShutdownReason::SignalReceived);
         }
 
         self.shutdown_and_cleanup();
@@ -237,10 +239,18 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
         }
     }
 
-    /// Common shutdown logic: log, notify plugins, cleanup socket.
-    fn shutdown_and_cleanup(&self) {
+    /// Common shutdown logic: deregister, notify plugins, cleanup socket.
+    fn shutdown_and_cleanup(&mut self) {
         let reason = self.get_shutdown_reason();
         log::info!("Shutting down: {reason}");
+
+        // Deregister from osquery (best-effort, allows faster cleanup than timeout)
+        if let Some(uuid) = self.uuid {
+            if let Err(e) = self.client.deregister_extension(uuid) {
+                log::debug!("Failed to deregister from osquery: {e}");
+            }
+        }
+
         self.notify_plugins_shutdown(reason);
         self.cleanup_socket();
     }
