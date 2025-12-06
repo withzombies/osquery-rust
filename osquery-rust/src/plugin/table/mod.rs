@@ -12,6 +12,7 @@ use crate::_osquery::{
 use crate::plugin::ExtensionResponseEnum::SuccessWithId;
 use crate::plugin::_enums::response::ExtensionResponseEnum;
 use crate::plugin::{OsqueryPlugin, Registry};
+use crate::shutdown::ShutdownReason;
 use enum_dispatch::enum_dispatch;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -113,8 +114,8 @@ impl OsqueryPlugin for TablePlugin {
         }
     }
 
-    fn shutdown(&self) {
-        log::trace!("Shutting down plugin: {}", self.name());
+    fn shutdown(&self, reason: ShutdownReason) {
+        log::trace!("Shutting down plugin: {} (reason: {})", self.name(), reason);
 
         match self {
             TablePlugin::Writeable(table) => {
@@ -123,9 +124,9 @@ impl OsqueryPlugin for TablePlugin {
                     return;
                 };
 
-                table.shutdown();
+                table.shutdown(reason);
             }
-            TablePlugin::Readonly(table) => table.shutdown(),
+            TablePlugin::Readonly(table) => table.shutdown(reason),
         }
     }
 }
@@ -280,12 +281,12 @@ pub trait Table: Send + Sync + 'static {
     fn update(&mut self, rowid: u64, row: &serde_json::Value) -> UpdateResult;
     fn delete(&mut self, rowid: u64) -> DeleteResult;
     fn insert(&mut self, auto_rowid: bool, row: &serde_json::value::Value) -> InsertResult;
-    fn shutdown(&self);
+    fn shutdown(&self, reason: ShutdownReason);
 }
 
 pub trait ReadOnlyTable: Send + Sync + 'static {
     fn name(&self) -> String;
     fn columns(&self) -> Vec<ColumnDef>;
     fn generate(&self, req: crate::ExtensionPluginRequest) -> crate::ExtensionResponse;
-    fn shutdown(&self);
+    fn shutdown(&self, reason: ShutdownReason);
 }

@@ -56,6 +56,7 @@ use crate::_osquery::osquery::{ExtensionPluginRequest, ExtensionPluginResponse};
 use crate::_osquery::osquery::{ExtensionResponse, ExtensionStatus};
 use crate::plugin::OsqueryPlugin;
 use crate::plugin::_enums::response::ExtensionResponseEnum;
+use crate::shutdown::ShutdownReason;
 use serde_json::Value;
 use std::fmt;
 
@@ -119,8 +120,10 @@ pub trait LoggerPlugin: Send + Sync + 'static {
 
     /// Shutdown the logger.
     ///
-    /// Called when osquery is shutting down.
-    fn shutdown(&self) {}
+    /// Called when the extension is shutting down. The reason parameter
+    /// indicates why the shutdown is occurring (e.g., osquery requested it,
+    /// connection lost, signal received, etc.).
+    fn shutdown(&self, _reason: ShutdownReason) {}
 }
 
 /// Log status information from osquery.
@@ -372,7 +375,7 @@ impl<L: LoggerPlugin> OsqueryPlugin for LoggerPluginWrapper<L> {
         }
     }
 
-    fn shutdown(&self) {
-        self.logger.shutdown();
+    fn shutdown(&self, reason: ShutdownReason) {
+        self.logger.shutdown(reason);
     }
 }

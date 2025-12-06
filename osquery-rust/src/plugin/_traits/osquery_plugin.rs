@@ -1,4 +1,6 @@
 use crate::plugin::Registry;
+use crate::shutdown::ShutdownReason;
+
 pub trait OsqueryPlugin: Send + Sync {
     fn name(&self) -> String;
     fn registry(&self) -> Registry;
@@ -8,5 +10,5 @@ pub trait OsqueryPlugin: Send + Sync {
         &self,
         request: crate::_osquery::ExtensionPluginRequest,
     ) -> crate::_osquery::ExtensionResponse;
-    fn shutdown(&self);
+    fn shutdown(&self, reason: ShutdownReason);
 }

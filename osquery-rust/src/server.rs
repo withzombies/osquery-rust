@@ -332,7 +332,7 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
             self.plugins.len()
         );
         for plugin in &self.plugins {
-            plugin.shutdown();
+            plugin.shutdown(reason);
         }
     }
 
@@ -455,10 +455,10 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
     fn handle_shutdown(&self) -> thrift::Result<()> {
         log::trace!("Shutdown RPC received from osquery");
 
-        // Notify all plugins first (existing behavior)
+        // Notify all plugins with OsqueryRequested reason
         self.registry.iter().for_each(|(_, v)| {
             v.iter().for_each(|(_, p)| {
-                p.shutdown();
+                p.shutdown(ShutdownReason::OsqueryRequested);
             });
         });
 

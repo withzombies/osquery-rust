@@ -1,5 +1,6 @@
 use crate::_osquery::{ExtensionPluginResponse, ExtensionResponse, ExtensionStatus};
 use crate::plugin::{ExtensionResponseEnum, OsqueryPlugin, Registry};
+use crate::shutdown::ShutdownReason;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -26,8 +27,10 @@ pub trait ConfigPlugin: Send + Sync + 'static {
         Err(format!("Pack '{name}' not found"))
     }
 
-    /// Called when the plugin is shutting down
-    fn shutdown(&self) {}
+    /// Called when the plugin is shutting down.
+    ///
+    /// The reason parameter indicates why the shutdown is occurring.
+    fn shutdown(&self, _reason: ShutdownReason) {}
 }
 
 /// Wrapper that adapts ConfigPlugin to OsqueryPlugin
@@ -106,7 +109,7 @@ impl OsqueryPlugin for ConfigPluginWrapper {
         }
     }
 
-    fn shutdown(&self) {
-        self.plugin.shutdown();
+    fn shutdown(&self, reason: ShutdownReason) {
+        self.plugin.shutdown(reason);
     }
 }
