@@ -349,13 +349,19 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
     }
 
     /// Notify all registered plugins that shutdown is occurring.
+    /// Uses catch_unwind to ensure all plugins are notified even if one panics.
     fn notify_plugins_shutdown(&self, reason: ShutdownReason) {
         log::debug!(
             "Notifying {} plugins of shutdown: {reason}",
             self.plugins.len()
         );
         for plugin in &self.plugins {
-            plugin.shutdown(reason);
+            let plugin_name = plugin.name();
+            if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                plugin.shutdown(reason);
+            })) {
+                log::error!("Plugin '{plugin_name}' panicked during shutdown: {e:?}");
+            }
         }
     }
 
