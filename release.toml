@@ -4,7 +4,6 @@ sign-tag = false
 push = true
 publish = true
 tag = true
-tag-prefix = "v"
 tag-message = "Release {{version}}"
 pre-release-commit-message = "chore: release {{version}}"
 consolidate-commits = false
