@@ -3,6 +3,9 @@ name = "logger-syslog"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.release]
+release = false
+
 [dependencies]
 osquery-rust-ng = { path = "../../osquery-rust" }
 clap = { version = "^4.5.40", features = ["derive"] }

@@ -1,4 +1,3 @@
-[workspace]
 allow-branch = ["main", "dev"]
 sign-commit = false
 sign-tag = false
@@ -8,7 +7,4 @@ tag = true
 tag-prefix = "v"
 tag-message = "Release {{version}}"
 pre-release-commit-message = "chore: release {{version}}"
-
-# Only release the main library, not examples
-[[package]]
-name = "osquery-rust-ng"
+consolidate-commits = false

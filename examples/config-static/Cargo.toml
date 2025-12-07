@@ -3,6 +3,9 @@ name = "config-static"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.release]
+release = false
+
 [[bin]]
 name = "config_static"
 path = "src/main.rs"
