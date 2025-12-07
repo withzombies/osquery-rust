@@ -15,7 +15,7 @@ use crate::client::Client;
 use crate::plugin::{OsqueryPlugin, Plugin, Registry};
 use crate::util::OptionToThriftResult;
 
-const DEFAULT_PING_INTERVAL: Duration = Duration::from_millis(5000);
+const DEFAULT_PING_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Handle that allows stopping the server from another thread.
 ///
