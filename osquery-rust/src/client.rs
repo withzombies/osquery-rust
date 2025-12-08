@@ -26,6 +26,12 @@ pub trait OsqueryClient: Send {
 
     /// Ping the osquery daemon to maintain the connection.
     fn ping(&mut self) -> thrift::Result<osquery::ExtensionStatus>;
+
+    /// Execute a SQL query against osquery.
+    fn query(&mut self, sql: String) -> thrift::Result<crate::ExtensionResponse>;
+
+    /// Get column information for a SQL query without executing it.
+    fn get_query_columns(&mut self, sql: String) -> thrift::Result<crate::ExtensionResponse>;
 }
 
 /// Production implementation of [`OsqueryClient`] using Thrift over Unix sockets.
@@ -131,6 +137,14 @@ impl OsqueryClient for ThriftClient {
 
     fn ping(&mut self) -> thrift::Result<osquery::ExtensionStatus> {
         osquery::TExtensionSyncClient::ping(&mut self.client)
+    }
+
+    fn query(&mut self, sql: String) -> thrift::Result<crate::ExtensionResponse> {
+        osquery::TExtensionManagerSyncClient::query(&mut self.client, sql)
+    }
+
+    fn get_query_columns(&mut self, sql: String) -> thrift::Result<crate::ExtensionResponse> {
+        osquery::TExtensionManagerSyncClient::get_query_columns(&mut self.client, sql)
     }
 }
 

@@ -948,4 +948,51 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_mock_client_query() {
+        use crate::ExtensionResponse;
+
+        let mut mock_client = MockOsqueryClient::new();
+
+        // Set up expectation for query() method
+        mock_client.expect_query().returning(|sql| {
+            // Return a mock response based on the SQL
+            let status = osquery::ExtensionStatus {
+                code: Some(0),
+                message: Some(format!("Query executed: {sql}")),
+                uuid: None,
+            };
+            Ok(ExtensionResponse::new(status, vec![]))
+        });
+
+        // Call query() and verify behavior
+        let result = mock_client.query("SELECT * FROM test".to_string());
+        assert!(result.is_ok());
+        let response = result.expect("query should succeed");
+        assert_eq!(response.status.as_ref().and_then(|s| s.code), Some(0));
+    }
+
+    #[test]
+    fn test_mock_client_get_query_columns() {
+        use crate::ExtensionResponse;
+
+        let mut mock_client = MockOsqueryClient::new();
+
+        // Set up expectation for get_query_columns() method
+        mock_client.expect_get_query_columns().returning(|sql| {
+            let status = osquery::ExtensionStatus {
+                code: Some(0),
+                message: Some(format!("Columns for: {sql}")),
+                uuid: None,
+            };
+            Ok(ExtensionResponse::new(status, vec![]))
+        });
+
+        // Call get_query_columns() and verify behavior
+        let result = mock_client.get_query_columns("SELECT * FROM test".to_string());
+        assert!(result.is_ok());
+        let response = result.expect("get_query_columns should succeed");
+        assert_eq!(response.status.as_ref().and_then(|s| s.code), Some(0));
+    }
 }
