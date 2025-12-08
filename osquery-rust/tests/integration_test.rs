@@ -132,4 +132,34 @@ mod tests {
             Err(e) => panic!("Ping failed: {:?}", e),
         }
     }
+
+    #[test]
+    fn test_query_osquery_info() {
+        use osquery_rust_ng::{OsqueryClient, ThriftClient};
+
+        let socket_path = get_osquery_socket();
+        eprintln!("Using osquery socket: {}", socket_path);
+
+        let mut client = ThriftClient::new(&socket_path, Default::default())
+            .expect("Failed to create ThriftClient");
+
+        // Query osquery_info table - built-in table that always exists
+        let result = client.query("SELECT * FROM osquery_info".to_string());
+        assert!(result.is_ok(), "Query should succeed: {:?}", result.err());
+
+        let response = result.expect("Should have response");
+
+        // Verify status
+        let status = response.status.expect("Should have status");
+        assert_eq!(status.code, Some(0), "Query should return success status");
+
+        // Verify we got rows back
+        let rows = response.response.expect("Should have response rows");
+        assert!(
+            !rows.is_empty(),
+            "osquery_info should return at least one row"
+        );
+
+        eprintln!("SUCCESS: Query returned {} rows", rows.len());
+    }
 }
