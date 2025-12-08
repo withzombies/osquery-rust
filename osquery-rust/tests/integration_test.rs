@@ -162,4 +162,73 @@ mod tests {
 
         eprintln!("SUCCESS: Query returned {} rows", rows.len());
     }
+
+    #[test]
+    fn test_server_lifecycle() {
+        use osquery_rust_ng::plugin::{
+            ColumnDef, ColumnOptions, ColumnType, ReadOnlyTable, TablePlugin,
+        };
+        use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus, Server};
+        use std::thread;
+
+        // Create a simple test table
+        struct TestLifecycleTable;
+
+        impl ReadOnlyTable for TestLifecycleTable {
+            fn name(&self) -> String {
+                "test_lifecycle_table".to_string()
+            }
+
+            fn columns(&self) -> Vec<ColumnDef> {
+                vec![ColumnDef::new(
+                    "id",
+                    ColumnType::Text,
+                    ColumnOptions::DEFAULT,
+                )]
+            }
+
+            fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
+                ExtensionResponse::new(
+                    ExtensionStatus {
+                        code: Some(0),
+                        message: Some("OK".to_string()),
+                        uuid: None,
+                    },
+                    vec![],
+                )
+            }
+
+            fn shutdown(&self) {}
+        }
+
+        let socket_path = get_osquery_socket();
+        eprintln!("Using osquery socket: {}", socket_path);
+
+        // Create server - Server::new returns Result
+        let mut server =
+            Server::new(Some("test_lifecycle"), &socket_path).expect("Failed to create Server");
+
+        // Wrap table in TablePlugin and register
+        let plugin = TablePlugin::from_readonly_table(TestLifecycleTable);
+        server.register_plugin(plugin);
+
+        // Get stop handle before spawning thread
+        let stop_handle = server.get_stop_handle();
+
+        // Run server in background thread
+        let server_thread = thread::spawn(move || {
+            server.run().expect("Server run failed");
+        });
+
+        // Give osquery time to register extension
+        std::thread::sleep(Duration::from_secs(2));
+
+        // Stop server (triggers graceful shutdown)
+        stop_handle.stop();
+
+        // Wait for server thread to finish
+        server_thread.join().expect("Server thread panicked");
+
+        eprintln!("SUCCESS: Server lifecycle completed (create → register → run → stop)");
+    }
 }
