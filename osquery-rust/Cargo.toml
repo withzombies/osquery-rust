@@ -47,3 +47,4 @@ signal-hook = "^0.3"
 [dev-dependencies]
 tempfile = "^3.14"
 mockall = "0.13"
+testcontainers = { version = "0.26", features = ["blocking"] }
