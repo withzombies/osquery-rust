@@ -4,14 +4,39 @@ use std::os::unix::net::UnixStream;
 use std::time::Duration;
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 
-pub struct Client {
+/// Trait for osquery daemon communication - enables mocking in tests.
+///
+/// This trait exposes only the methods that `Server` actually needs to communicate
+/// with the osquery daemon. Implementing this trait allows creating mock clients
+/// for testing without requiring a real osquery socket connection.
+#[cfg_attr(test, mockall::automock)]
+pub trait OsqueryClient: Send {
+    /// Register this extension with the osquery daemon.
+    fn register_extension(
+        &mut self,
+        info: osquery::InternalExtensionInfo,
+        registry: osquery::ExtensionRegistry,
+    ) -> thrift::Result<osquery::ExtensionStatus>;
+
+    /// Deregister this extension from the osquery daemon.
+    fn deregister_extension(
+        &mut self,
+        uuid: osquery::ExtensionRouteUUID,
+    ) -> thrift::Result<osquery::ExtensionStatus>;
+
+    /// Ping the osquery daemon to maintain the connection.
+    fn ping(&mut self) -> thrift::Result<osquery::ExtensionStatus>;
+}
+
+/// Production implementation of [`OsqueryClient`] using Thrift over Unix sockets.
+pub struct ThriftClient {
     client: osquery::ExtensionManagerSyncClient<
         TBinaryInputProtocol<UnixStream>,
         TBinaryOutputProtocol<UnixStream>,
     >,
 }
 
-impl Client {
+impl ThriftClient {
     pub fn new(socket_path: &str, _timeout: Duration) -> Result<Self, Error> {
         // todo: error handling, socket could be unable to connect to
         // todo: use timeout
@@ -21,7 +46,7 @@ impl Client {
         let in_proto = TBinaryInputProtocol::new(socket_tx, true);
         let out_proto = TBinaryOutputProtocol::new(socket_rx, true);
 
-        Ok(Client {
+        Ok(ThriftClient {
             client: osquery::ExtensionManagerSyncClient::new(in_proto, out_proto),
         })
     }
@@ -30,7 +55,7 @@ impl Client {
 //
 // Extension implements _osquery's Thrift API: trait TExtensionManagerSyncClient
 //
-impl osquery::TExtensionManagerSyncClient for Client {
+impl osquery::TExtensionManagerSyncClient for ThriftClient {
     fn extensions(&mut self) -> thrift::Result<osquery::InternalExtensionList> {
         self.client.extensions()
     }
@@ -66,7 +91,7 @@ impl osquery::TExtensionManagerSyncClient for Client {
 //
 // Extension implements _osquery's Thrift API: super-trait TExtensionSyncClient
 //
-impl osquery::TExtensionSyncClient for Client {
+impl osquery::TExtensionSyncClient for ThriftClient {
     fn ping(&mut self) -> thrift::Result<osquery::ExtensionStatus> {
         self.client.ping()
     }
@@ -84,3 +109,32 @@ impl osquery::TExtensionSyncClient for Client {
         self.client.shutdown()
     }
 }
+
+//
+// ThriftClient implements our custom OsqueryClient trait
+//
+impl OsqueryClient for ThriftClient {
+    fn register_extension(
+        &mut self,
+        info: osquery::InternalExtensionInfo,
+        registry: osquery::ExtensionRegistry,
+    ) -> thrift::Result<osquery::ExtensionStatus> {
+        osquery::TExtensionManagerSyncClient::register_extension(&mut self.client, info, registry)
+    }
+
+    fn deregister_extension(
+        &mut self,
+        uuid: osquery::ExtensionRouteUUID,
+    ) -> thrift::Result<osquery::ExtensionStatus> {
+        osquery::TExtensionManagerSyncClient::deregister_extension(&mut self.client, uuid)
+    }
+
+    fn ping(&mut self) -> thrift::Result<osquery::ExtensionStatus> {
+        osquery::TExtensionSyncClient::ping(&mut self.client)
+    }
+}
+
+/// Type alias for backwards compatibility.
+///
+/// Existing code using `Client` will continue to work unchanged.
+pub type Client = ThriftClient;

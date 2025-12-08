@@ -10,9 +10,8 @@ use thrift::protocol::*;
 use thrift::transport::*;
 
 use crate::_osquery as osquery;
-use crate::_osquery::{TExtensionManagerSyncClient, TExtensionSyncClient};
-use crate::client::Client;
-use crate::plugin::{OsqueryPlugin, Plugin, Registry};
+use crate::client::{OsqueryClient, ThriftClient};
+use crate::plugin::{OsqueryPlugin, Registry};
 use crate::util::OptionToThriftResult;
 
 const DEFAULT_PING_INTERVAL: Duration = Duration::from_millis(500);
@@ -64,10 +63,11 @@ impl ServerStopHandle {
     }
 }
 
-pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static> {
+pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static, C: OsqueryClient = ThriftClient>
+{
     name: String,
     socket_path: String,
-    client: Client,
+    client: C,
     plugins: Vec<P>,
     ping_interval: Duration,
     uuid: Option<osquery::ExtensionRouteUUID>,
@@ -80,16 +80,19 @@ pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static> {
     listen_path: Option<String>,
 }
 
-impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
+/// Implementation for `Server` using the default `ThriftClient`.
+impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P, ThriftClient> {
+    /// Create a new server that connects to osquery at the given socket path.
+    ///
+    /// # Arguments
+    /// * `name` - Optional extension name (defaults to crate name)
+    /// * `socket_path` - Path to osquery's extension socket
+    ///
+    /// # Errors
+    /// Returns an error if the connection to osquery fails.
     pub fn new(name: Option<&str>, socket_path: &str) -> Result<Self, Error> {
-        let mut reg: HashMap<String, HashMap<String, Plugin>> = HashMap::new();
-        for var in Registry::VARIANTS {
-            reg.insert((*var).to_string(), HashMap::new());
-        }
-
         let name = name.unwrap_or(crate_name!());
-
-        let client = Client::new(socket_path, Default::default())?;
+        let client = ThriftClient::new(socket_path, Default::default())?;
 
         Ok(Server {
             name: name.to_string(),
@@ -103,6 +106,33 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
             listener_thread: None,
             listen_path: None,
         })
+    }
+}
+
+/// Implementation for `Server` with any client type (generic over `C: OsqueryClient`).
+impl<P: OsqueryPlugin + Clone + Send + 'static, C: OsqueryClient> Server<P, C> {
+    /// Create a server with a pre-constructed client.
+    ///
+    /// This constructor is useful for testing, allowing injection of mock clients.
+    ///
+    /// # Arguments
+    /// * `name` - Optional extension name (defaults to crate name)
+    /// * `socket_path` - Path to osquery's extension socket (used for listener socket naming)
+    /// * `client` - Pre-constructed client implementing `OsqueryClient`
+    pub fn with_client(name: Option<&str>, socket_path: &str, client: C) -> Self {
+        let name = name.unwrap_or(crate_name!());
+        Server {
+            name: name.to_string(),
+            socket_path: socket_path.to_string(),
+            client,
+            plugins: Vec::new(),
+            ping_interval: DEFAULT_PING_INTERVAL,
+            uuid: None,
+            started: false,
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
+            listener_thread: None,
+            listen_path: None,
+        }
     }
 
     ///
@@ -539,5 +569,128 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionManagerSyncHandler for Handler<
             },
             vec![],
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::MockOsqueryClient;
+    use crate::plugin::Plugin;
+    use crate::plugin::{ColumnDef, ColumnOptions, ColumnType, ReadOnlyTable, TablePlugin};
+
+    /// Simple test table for server tests
+    struct TestTable;
+
+    impl ReadOnlyTable for TestTable {
+        fn name(&self) -> String {
+            "test_table".to_string()
+        }
+
+        fn columns(&self) -> Vec<ColumnDef> {
+            vec![ColumnDef::new(
+                "col",
+                ColumnType::Text,
+                ColumnOptions::DEFAULT,
+            )]
+        }
+
+        fn generate(&self, _request: crate::ExtensionPluginRequest) -> crate::ExtensionResponse {
+            crate::ExtensionResponse::new(osquery::ExtensionStatus::default(), vec![])
+        }
+
+        fn shutdown(&self) {}
+    }
+
+    #[test]
+    fn test_server_with_mock_client_creation() {
+        let mock_client = MockOsqueryClient::new();
+        let server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test_ext"), "/tmp/test.sock", mock_client);
+
+        assert_eq!(server.name, "test_ext");
+        assert_eq!(server.socket_path, "/tmp/test.sock");
+        assert!(server.plugins.is_empty());
+    }
+
+    #[test]
+    fn test_server_with_mock_client_default_name() {
+        let mock_client = MockOsqueryClient::new();
+        let server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(None, "/tmp/test.sock", mock_client);
+
+        // Default name comes from crate_name!() which is "osquery-rust-ng"
+        assert_eq!(server.name, "osquery-rust-ng");
+    }
+
+    #[test]
+    fn test_server_register_plugin_with_mock_client() {
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        let plugin = Plugin::Table(TablePlugin::from_readonly_table(TestTable));
+        server.register_plugin(plugin);
+
+        assert_eq!(server.plugins.len(), 1);
+    }
+
+    #[test]
+    fn test_server_register_multiple_plugins() {
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        server.register_plugin(Plugin::Table(TablePlugin::from_readonly_table(TestTable)));
+        server.register_plugin(Plugin::Table(TablePlugin::from_readonly_table(TestTable)));
+
+        assert_eq!(server.plugins.len(), 2);
+    }
+
+    #[test]
+    fn test_server_stop_handle_with_mock_client() {
+        let mock_client = MockOsqueryClient::new();
+        let server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        assert!(server.is_running());
+
+        let handle = server.get_stop_handle();
+        assert!(handle.is_running());
+
+        handle.stop();
+
+        assert!(!server.is_running());
+        assert!(!handle.is_running());
+    }
+
+    #[test]
+    fn test_server_stop_method_with_mock_client() {
+        let mock_client = MockOsqueryClient::new();
+        let server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        assert!(server.is_running());
+        server.stop();
+        assert!(!server.is_running());
+    }
+
+    #[test]
+    fn test_generate_registry_with_mock_client() {
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        server.register_plugin(Plugin::Table(TablePlugin::from_readonly_table(TestTable)));
+
+        let registry = server.generate_registry();
+        assert!(registry.is_ok());
+
+        let registry = registry.ok();
+        assert!(registry.is_some());
+
+        let registry = registry.unwrap_or_default();
+        // Registry should have "table" entry
+        assert!(registry.contains_key("table"));
     }
 }
