@@ -429,8 +429,8 @@ impl<L: LoggerPlugin> OsqueryPlugin for LoggerPluginWrapper<L> {
     }
 
     fn ping(&self) -> ExtensionStatus {
-        // Health check - always return OK for now
-        ExtensionStatus::default()
+        // Health check - always return OK (status code 0)
+        ExtensionStatus::new(0, None, None)
     }
 
     fn handle_call(&self, request: crate::_osquery::ExtensionPluginRequest) -> ExtensionResponse {
@@ -570,5 +570,155 @@ mod tests {
         let request_type = wrapper.parse_request(&request);
         // Should fall through to default (RawString)
         assert!(matches!(request_type, LogRequestType::RawString(_)));
+    }
+
+    #[test]
+    fn test_status_log_request_returns_success() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("status".to_string(), "true".to_string());
+        request.insert(
+            "log".to_string(),
+            r#"[{"s":1,"f":"test.cpp","i":42,"m":"test message"}]"#.to_string(),
+        );
+
+        let response = wrapper.handle_call(request);
+
+        let status = response.status.as_ref();
+        assert!(status.is_some());
+        assert_eq!(status.and_then(|s| s.code), Some(0));
+    }
+
+    #[test]
+    fn test_status_log_parses_multiple_entries() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("status".to_string(), "true".to_string());
+        request.insert(
+            "log".to_string(),
+            r#"[{"s":0,"f":"a.cpp","i":1,"m":"info"},{"s":2,"f":"b.cpp","i":2,"m":"error"}]"#
+                .to_string(),
+        );
+
+        let request_type = wrapper.parse_request(&request);
+        assert!(
+            matches!(request_type, LogRequestType::StatusLog(_)),
+            "Expected StatusLog request type"
+        );
+        if let LogRequestType::StatusLog(entries) = request_type {
+            assert_eq!(entries.len(), 2);
+            assert!(entries
+                .first()
+                .map(|e| matches!(e.severity, LogSeverity::Info))
+                .unwrap_or(false));
+            assert!(entries
+                .get(1)
+                .map(|e| matches!(e.severity, LogSeverity::Error))
+                .unwrap_or(false));
+        }
+    }
+
+    #[test]
+    fn test_raw_string_request_returns_success() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("string".to_string(), "test log message".to_string());
+
+        let response = wrapper.handle_call(request);
+
+        let status = response.status.as_ref();
+        assert!(status.is_some());
+        assert_eq!(status.and_then(|s| s.code), Some(0));
+    }
+
+    #[test]
+    fn test_snapshot_request_returns_success() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("snapshot".to_string(), r#"{"data":"snapshot"}"#.to_string());
+
+        let response = wrapper.handle_call(request);
+
+        let status = response.status.as_ref();
+        assert!(status.is_some());
+        assert_eq!(status.and_then(|s| s.code), Some(0));
+    }
+
+    #[test]
+    fn test_init_request_returns_success() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("init".to_string(), "test_logger".to_string());
+
+        let response = wrapper.handle_call(request);
+
+        let status = response.status.as_ref();
+        assert!(status.is_some());
+        assert_eq!(status.and_then(|s| s.code), Some(0));
+    }
+
+    #[test]
+    fn test_health_request_returns_success() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("health".to_string(), "".to_string());
+
+        let response = wrapper.handle_call(request);
+
+        let status = response.status.as_ref();
+        assert!(status.is_some());
+        assert_eq!(status.and_then(|s| s.code), Some(0));
+    }
+
+    #[test]
+    fn test_query_result_log_request_returns_success() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+
+        // Query result - valid JSON without status=true
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert(
+            "log".to_string(),
+            r#"{"name":"query1","data":[{"column":"value"}]}"#.to_string(),
+        );
+
+        let response = wrapper.handle_call(request);
+
+        let status = response.status.as_ref();
+        assert!(status.is_some());
+        assert_eq!(status.and_then(|s| s.code), Some(0));
+    }
+
+    #[test]
+    fn test_logger_plugin_registry() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+        assert_eq!(wrapper.registry(), crate::plugin::Registry::Logger);
+    }
+
+    #[test]
+    fn test_logger_plugin_routes_empty() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+        assert!(wrapper.routes().is_empty());
+    }
+
+    #[test]
+    fn test_logger_plugin_name() {
+        let logger = TestLogger::new();
+        let wrapper = LoggerPluginWrapper::new(logger);
+        assert_eq!(wrapper.name(), "test_logger");
     }
 }

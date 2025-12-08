@@ -5,7 +5,7 @@
 //!
 //! ## Running the tests
 //!
-//! ### Option 1: Local osqueryi
+//! ### Local development (with osqueryi)
 //! ```bash
 //! # Start osqueryi in one terminal
 //! osqueryi --nodisable_extensions
@@ -15,85 +15,81 @@
 //!   cargo test --test integration_test
 //! ```
 //!
-//! ### Option 2: Docker with exec (for CI)
+//! ### CI (inside Docker container)
 //! ```bash
-//! # Start osquery container
-//! docker run -d --name osquery-test osquery/osquery:5.17.0-ubuntu22.04 osqueryd --ephemeral
-//!
-//! # Copy test binary into container and run
-//! # (handled by CI workflow)
+//! # Tests run inside container alongside osqueryd
+//! # See .github/workflows/integration.yml
 //! ```
 //!
 //! ## Architecture Note
 //!
 //! osquery extensions communicate via Unix domain sockets, which cannot span Docker
-//! container boundaries. For this reason, integration tests must run either:
-//! - On a host with osquery installed
-//! - Inside a Docker container alongside osquery
+//! container boundaries. Integration tests must run either:
+//! - On a host with osquery installed and running
+//! - Inside a Docker container alongside osqueryd
 //!
-//! Run with: cargo test --test integration_test
-//! Skip with: cargo test --lib (unit tests only)
+//! These tests will FAIL (not skip) if osquery socket is not available.
 
 #[allow(clippy::expect_used, clippy::panic)] // Integration tests can panic on infra failures
 mod tests {
     use std::path::Path;
-    use std::process::Command;
     use std::time::Duration;
 
-    #[allow(dead_code)]
-    const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+    const SOCKET_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+    const SOCKET_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
-    /// Check if osquery is available on this system
-    fn osquery_available() -> bool {
-        Command::new("osqueryi")
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    }
+    /// Get the osquery extensions socket path from environment or common locations.
+    /// Waits up to SOCKET_WAIT_TIMEOUT for socket to appear.
+    fn get_osquery_socket() -> String {
+        let start = std::time::Instant::now();
 
-    /// Get the osquery extensions socket path from environment or try to find it
-    fn get_osquery_socket() -> Option<String> {
-        // First check environment variable
-        if let Ok(path) = std::env::var("OSQUERY_SOCKET") {
-            if Path::new(&path).exists() {
-                return Some(path);
+        // Build list of paths to check
+        let env_path = std::env::var("OSQUERY_SOCKET").ok();
+        let home = std::env::var("HOME").unwrap_or_default();
+
+        loop {
+            // Check environment variable first
+            if let Some(ref path) = env_path {
+                if Path::new(path).exists() {
+                    return path.clone();
+                }
             }
-        }
 
-        // Try common locations on macOS and Linux
-        let common_paths = [
-            "/var/osquery/osquery.em",
-            "/tmp/osquery.em",
-            &format!(
-                "{}/.osquery/shell.em",
-                std::env::var("HOME").unwrap_or_default()
-            ),
-        ];
+            // Try common locations on macOS and Linux
+            let common_paths = [
+                "/var/osquery/osquery.em".to_string(),
+                "/tmp/osquery.em".to_string(),
+                format!("{}/.osquery/shell.em", home),
+            ];
 
-        for path in common_paths {
-            if Path::new(path).exists() {
-                return Some(path.to_string());
+            for path in &common_paths {
+                if Path::new(path).exists() {
+                    return path.clone();
+                }
             }
-        }
 
-        None
-    }
+            // Check timeout
+            if start.elapsed() >= SOCKET_WAIT_TIMEOUT {
+                let checked_paths: Vec<&str> = env_path
+                    .as_ref()
+                    .map(|p| vec![p.as_str()])
+                    .unwrap_or_default()
+                    .into_iter()
+                    .chain(common_paths.iter().map(|s| s.as_str()))
+                    .collect();
 
-    #[test]
-    fn test_osquery_availability() {
-        // This test documents whether osquery is available on this system
-        // It always passes but logs useful information
-        if osquery_available() {
-            eprintln!("osquery is available on this system");
-            if let Some(socket) = get_osquery_socket() {
-                eprintln!("Found osquery socket at: {}", socket);
-            } else {
-                eprintln!("No osquery socket found - start osqueryi with --nodisable_extensions");
+                panic!(
+                    "No osquery socket found after {:?}. Checked paths: {:?}\n\
+                     \n\
+                     To run integration tests:\n\
+                     1. Start osqueryi: osqueryi --nodisable_extensions\n\
+                     2. Set OSQUERY_SOCKET env var to the socket path\n\
+                     3. Or run tests inside Docker container with osqueryd",
+                    SOCKET_WAIT_TIMEOUT, checked_paths
+                );
             }
-        } else {
-            eprintln!("osquery is not installed - skipping integration tests");
-            eprintln!("Install osquery from: https://osquery.io/downloads");
+
+            std::thread::sleep(SOCKET_POLL_INTERVAL);
         }
     }
 
@@ -101,11 +97,8 @@ mod tests {
     fn test_thrift_client_connects_to_osquery() {
         use osquery_rust_ng::ThriftClient;
 
-        let Some(socket_path) = get_osquery_socket() else {
-            eprintln!("SKIP: No osquery socket available");
-            eprintln!("Set OSQUERY_SOCKET env var or start osqueryi --nodisable_extensions");
-            return;
-        };
+        let socket_path = get_osquery_socket();
+        eprintln!("Using osquery socket: {}", socket_path);
 
         let client = ThriftClient::new(&socket_path, Default::default());
 
@@ -119,18 +112,11 @@ mod tests {
     fn test_thrift_client_ping() {
         use osquery_rust_ng::{OsqueryClient, ThriftClient};
 
-        let Some(socket_path) = get_osquery_socket() else {
-            eprintln!("SKIP: No osquery socket available");
-            return;
-        };
+        let socket_path = get_osquery_socket();
+        eprintln!("Using osquery socket: {}", socket_path);
 
-        let mut client = match ThriftClient::new(&socket_path, Default::default()) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("SKIP: Could not connect to osquery: {:?}", e);
-                return;
-            }
-        };
+        let mut client = ThriftClient::new(&socket_path, Default::default())
+            .expect("Failed to create ThriftClient");
 
         let result = client.ping();
 

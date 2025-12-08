@@ -1,6 +1,7 @@
 [![Crate][crate-image]][crate-link]
 [![Docs][docs-image]][docs-link]
 [![Status][test-action-image]][test-action-link]
+[![Coverage][coverage-image]][coverage-link]
 [![Apache 2.0 Licensed][license-apache-image]][license-apache-link]
 [![MIT Licensed][license-mit-image]][license-mit-link]
 
@@ -353,6 +354,10 @@ This project was initially forked from [polarlab's osquery-rust project](https:/
 [test-action-image]: https://github.com/withzombies/osquery-rust/workflows/Rust%20CI/badge.svg
 
 [test-action-link]: https://github.com/withzombies/osquery-rust/actions?query=workflow:Rust%20CI
+
+[coverage-image]: https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/withzombies/36626ec8e61a6ccda380befc41f2cae1/raw/coverage.json
+
+[coverage-link]: https://github.com/withzombies/osquery-rust/actions/workflows/coverage.yml
 
 [license-apache-image]: https://img.shields.io/badge/license-Apache2.0-blue.svg
 

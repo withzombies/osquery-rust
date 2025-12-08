@@ -1,0 +1,153 @@
+#!/bin/bash
+
+# Pre-commit hook for osquery-rust
+# Runs formatting, linting, unit tests, and integration tests (in Docker)
+
+set -e
+
+# Check formatting
+echo "Checking formatting with cargo fmt..."
+if ! cargo fmt --all -- --check; then
+    echo "Error: Code is not formatted. Please run 'cargo fmt --all' before committing."
+    exit 1
+fi
+
+# Run Clippy linter
+echo "Running cargo clippy..."
+if ! cargo clippy --all-targets --all-features -- -D warnings; then
+    echo "Error: Clippy found warnings or errors. Please fix them before committing."
+    exit 1
+fi
+
+# Run unit tests (fast, no external dependencies)
+echo "Running unit tests..."
+if ! cargo test --all --lib; then
+    echo "Error: Unit tests failed. Please fix them before committing."
+    exit 1
+fi
+
+# Run doc tests
+echo "Running doc tests..."
+if ! cargo test --doc; then
+    echo "Error: Doc tests failed. Please fix them before committing."
+    exit 1
+fi
+
+# Run integration tests with osquery
+echo "Running integration tests..."
+
+# Prefer local osquery for native performance
+if command -v osqueryi &> /dev/null; then
+    echo "Using locally installed osquery (native)..."
+
+    # Strip trailing slash from TMPDIR if present
+    TMPDIR_CLEAN="${TMPDIR%/}"
+    SOCKET_DIR="${TMPDIR_CLEAN:-/tmp}/osquery-precommit-$$"
+    SOCKET_PATH="$SOCKET_DIR/osquery.em"
+
+    cleanup() {
+        echo "Cleaning up osquery..."
+        # Kill all processes in the pipeline (tail and osqueryi)
+        pkill -f "osqueryi.*$SOCKET_PATH" 2>/dev/null || true
+        pkill -f "tail -f /dev/null" 2>/dev/null || true
+        rm -rf "$SOCKET_DIR" 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
+    # Create socket directory
+    mkdir -p "$SOCKET_DIR"
+
+    # Start osqueryi with extensions enabled, keeping stdin open with tail
+    tail -f /dev/null | osqueryi --nodisable_extensions --extensions_socket="$SOCKET_PATH" &
+    OSQUERY_PID=$!
+
+    # Wait for socket to be ready
+    echo "Waiting for osquery socket..."
+    for i in {1..30}; do
+        if [ -S "$SOCKET_PATH" ]; then
+            echo "osquery socket ready at $SOCKET_PATH"
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            echo "Error: Timeout waiting for osquery socket"
+            exit 1
+        fi
+        sleep 1
+    done
+
+    # Run integration tests
+    OSQUERY_SOCKET="$SOCKET_PATH" cargo test --test integration_test -- --nocapture
+
+elif command -v docker &> /dev/null; then
+    echo "osquery not installed locally, using Docker (slower)..."
+
+    CONTAINER_NAME="osquery-integration-test-$$"
+    OSQUERY_IMAGE="osquery/osquery:5.17.0-ubuntu22.04"
+
+    cleanup() {
+        echo "Cleaning up Docker container..."
+        docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
+    # Start osquery container with extensions enabled
+    echo "Starting osquery container..."
+    docker run -d \
+        --name "$CONTAINER_NAME" \
+        --platform linux/amd64 \
+        -v "$(pwd):/workspace" \
+        -w /workspace \
+        "$OSQUERY_IMAGE" \
+        bash -c 'mkdir -p /tmp/osquery_logs && osqueryd \
+            --ephemeral \
+            --disable_extensions=false \
+            --extensions_socket=/var/osquery/osquery.em \
+            --database_path=/tmp/osquery.db \
+            --logger_plugin=filesystem \
+            --logger_path=/tmp/osquery_logs \
+            --config_path=/dev/null \
+            --disable_watchdog \
+            --verbose'
+
+    # Wait for osquery socket to be ready
+    echo "Waiting for osquery socket..."
+    for i in {1..30}; do
+        if docker exec "$CONTAINER_NAME" test -S /var/osquery/osquery.em 2>/dev/null; then
+            echo "osquery socket ready"
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            echo "Error: Timeout waiting for osquery socket"
+            docker logs "$CONTAINER_NAME"
+            exit 1
+        fi
+        sleep 1
+    done
+
+    # Install Rust in the container and run tests
+    echo "Installing Rust and running integration tests..."
+    docker exec "$CONTAINER_NAME" bash -c '
+        set -e
+        apt-get update -qq
+        apt-get install -y -qq curl build-essential >/dev/null
+        curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --quiet
+        source ~/.cargo/env
+        cd /workspace
+        OSQUERY_SOCKET=/var/osquery/osquery.em cargo test --test integration_test -- --nocapture
+    '
+else
+    echo "Error: Neither osquery nor Docker is available"
+    echo "Install osquery: brew install osquery (macOS) or see https://osquery.io/downloads"
+    echo "Or install Docker: https://docs.docker.com/get-docker/"
+    exit 1
+fi
+
+if [ $? -ne 0 ]; then
+    echo "Error: Integration tests failed"
+    exit 1
+fi
+
+echo "Integration tests passed"
+
+echo "All checks passed. Proceeding with commit."
+exit 0
