@@ -1,0 +1,91 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Start osquery container
+        run: |
+          mkdir -p /tmp/osquery
+          docker run -d --name osquery \
+            -v /tmp/osquery:/var/osquery \
+            osquery/osquery:5.17.0-ubuntu22.04 \
+            osqueryd --ephemeral --disable_extensions=false \
+            --extensions_socket=/var/osquery/osquery.em
+
+          # Wait for socket (30s timeout, 1s poll)
+          for i in {1..30}; do
+            [ -S /tmp/osquery/osquery.em ] && echo 'Socket ready' && break
+            sleep 1
+          done
+
+          # Verify socket exists
+          if [ ! -S /tmp/osquery/osquery.em ]; then
+            echo 'ERROR: osquery socket not found'
+            docker logs osquery
+            exit 1
+          fi
+
+      - name: Generate coverage report
+        env:
+          OSQUERY_SOCKET: /tmp/osquery/osquery.em
+        run: |
+          # Exclude auto-generated Thrift code from coverage
+          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --ignore-filename-regex "_osquery"
+
+      - name: Calculate coverage percentage
+        id: coverage
+        env:
+          OSQUERY_SOCKET: /tmp/osquery/osquery.em
+        run: |
+          # Get coverage percentage from cargo-llvm-cov (excluding auto-generated code)
+          COVERAGE=$(cargo llvm-cov --all-features --workspace --json --ignore-filename-regex "_osquery" 2>/dev/null | jq -r '.data[0].totals.lines.percent // 0' | xargs printf "%.1f")
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "Coverage: $COVERAGE%"
+
+      - name: Stop osquery container
+        if: always()
+        run: docker stop osquery || true
+
+      - name: Update coverage badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: 36626ec8e61a6ccda380befc41f2cae1
+          filename: coverage.json
+          label: coverage
+          message: ${{ steps.coverage.outputs.coverage }}%
+          valColorRange: ${{ steps.coverage.outputs.coverage }}
+          maxColorRange: 100
+          minColorRange: 0
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+        continue-on-error: true
