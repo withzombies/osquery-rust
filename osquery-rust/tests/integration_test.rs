@@ -231,4 +231,93 @@ mod tests {
 
         eprintln!("SUCCESS: Server lifecycle completed (create → register → run → stop)");
     }
+
+    #[test]
+    fn test_table_plugin_end_to_end() {
+        use osquery_rust_ng::plugin::{
+            ColumnDef, ColumnOptions, ColumnType, ReadOnlyTable, TablePlugin,
+        };
+        use osquery_rust_ng::{
+            ExtensionPluginRequest, ExtensionResponse, ExtensionStatus, OsqueryClient, Server,
+            ThriftClient,
+        };
+        use std::collections::BTreeMap;
+        use std::thread;
+
+        // Create test table that returns known data
+        struct TestEndToEndTable;
+
+        impl ReadOnlyTable for TestEndToEndTable {
+            fn name(&self) -> String {
+                "test_e2e_table".to_string()
+            }
+
+            fn columns(&self) -> Vec<ColumnDef> {
+                vec![
+                    ColumnDef::new("id", ColumnType::Integer, ColumnOptions::DEFAULT),
+                    ColumnDef::new("name", ColumnType::Text, ColumnOptions::DEFAULT),
+                ]
+            }
+
+            fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
+                let mut row = BTreeMap::new();
+                row.insert("id".to_string(), "42".to_string());
+                row.insert("name".to_string(), "test_value".to_string());
+
+                ExtensionResponse::new(
+                    ExtensionStatus {
+                        code: Some(0),
+                        message: Some("OK".to_string()),
+                        uuid: None,
+                    },
+                    vec![row],
+                )
+            }
+
+            fn shutdown(&self) {}
+        }
+
+        let socket_path = get_osquery_socket();
+        eprintln!("Using osquery socket: {}", socket_path);
+
+        // Create and start server with test table
+        let mut server =
+            Server::new(Some("test_e2e"), &socket_path).expect("Failed to create Server");
+
+        let plugin = TablePlugin::from_readonly_table(TestEndToEndTable);
+        server.register_plugin(plugin);
+
+        let stop_handle = server.get_stop_handle();
+
+        let server_thread = thread::spawn(move || {
+            server.run().expect("Server run failed");
+        });
+
+        // Wait for extension to register
+        std::thread::sleep(Duration::from_secs(2));
+
+        // Query the table through osquery using a separate client
+        let mut client = ThriftClient::new(&socket_path, Default::default())
+            .expect("Failed to create query client");
+
+        let result = client.query("SELECT * FROM test_e2e_table".to_string());
+
+        // Stop server before assertions (cleanup)
+        stop_handle.stop();
+        server_thread.join().expect("Server thread panicked");
+
+        // Verify query results
+        let response = result.expect("Query should succeed");
+        let status = response.status.expect("Should have status");
+        assert_eq!(status.code, Some(0), "Query should return success");
+
+        let rows = response.response.expect("Should have rows");
+        assert_eq!(rows.len(), 1, "Should have exactly one row");
+
+        let row = rows.first().expect("Should have first row");
+        assert_eq!(row.get("id"), Some(&"42".to_string()));
+        assert_eq!(row.get("name"), Some(&"test_value".to_string()));
+
+        eprintln!("SUCCESS: End-to-end table query returned expected data");
+    }
 }
