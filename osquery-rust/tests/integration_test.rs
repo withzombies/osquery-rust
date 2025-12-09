@@ -5,20 +5,19 @@
 //!
 //! ## Running the tests
 //!
-//! ### Local development (with osqueryi)
+//! ### Via Docker (recommended)
 //! ```bash
-//! # Start osqueryi in one terminal
-//! osqueryi --nodisable_extensions
-//!
-//! # In another terminal, run tests with socket path
-//! OSQUERY_SOCKET=$(osqueryi --line 'SELECT path AS socket FROM osquery_extensions WHERE uuid = 0;' | tail -1) \
-//!   cargo test --test integration_test
+//! cargo test --features docker-tests --test test_integration_docker
 //! ```
 //!
-//! ### CI (inside Docker container)
+//! ### Via pre-commit hook (sets up osquery automatically)
 //! ```bash
-//! # Tests run inside container alongside osqueryd
-//! # See .github/workflows/integration.yml
+//! .git/hooks/pre-commit
+//! ```
+//!
+//! ### Direct (requires osquery running with extensions autoloaded)
+//! ```bash
+//! cargo test --features osquery-tests --test integration_test
 //! ```
 //!
 //! ## Architecture Note
@@ -29,6 +28,8 @@
 //! - Inside a Docker container alongside osqueryd
 //!
 //! These tests will FAIL (not skip) if osquery socket is not available.
+
+#![cfg(feature = "osquery-tests")]
 
 #[allow(clippy::expect_used, clippy::panic)] // Integration tests can panic on infra failures
 mod tests {
@@ -93,6 +94,7 @@ mod tests {
         }
     }
 
+    /// Test ThriftClient can connect to osquery socket.
     #[test]
     fn test_thrift_client_connects_to_osquery() {
         use osquery_rust_ng::ThriftClient;
@@ -108,6 +110,7 @@ mod tests {
         }
     }
 
+    /// Test ThriftClient ping functionality.
     #[test]
     fn test_thrift_client_ping() {
         use osquery_rust_ng::{OsqueryClient, ThriftClient};
@@ -133,6 +136,7 @@ mod tests {
         }
     }
 
+    /// Test querying osquery_info table via ThriftClient.
     #[test]
     fn test_query_osquery_info() {
         use osquery_rust_ng::{OsqueryClient, ThriftClient};

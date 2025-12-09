@@ -294,6 +294,150 @@ pub fn exec_query(
     String::from_utf8(stdout).map_err(|e| format!("Invalid UTF-8 in output: {}", e))
 }
 
+/// Run integration tests inside a Docker container with osquery.
+///
+/// This function runs `cargo test` inside the osquery-rust-test container,
+/// which has osquery, extensions, and Rust toolchain pre-installed.
+///
+/// Source code is mounted from `project_root` to `/workspace` in the container.
+/// osqueryd is started with extensions autoloaded before tests run.
+///
+/// # Arguments
+/// * `project_root` - Path to the osquery-rust project root
+/// * `test_filter` - Test name filter (passed to cargo test)
+/// * `env_vars` - Additional environment variables to set
+///
+/// # Returns
+/// `Ok(output)` with test output, or `Err(error)` if tests failed.
+#[allow(dead_code)]
+pub fn run_integration_tests_in_docker(
+    project_root: &std::path::Path,
+    test_filter: Option<&str>,
+    env_vars: &[(&str, &str)],
+) -> Result<String, String> {
+    use std::process::Command;
+
+    // Build the docker command
+    let mut cmd = Command::new("docker");
+    cmd.arg("run")
+        .arg("--rm")
+        .arg("-v")
+        .arg(format!("{}:/workspace", project_root.display()))
+        .arg("-w")
+        .arg("/workspace");
+
+    // Add environment variables
+    for (key, value) in env_vars {
+        cmd.arg("-e").arg(format!("{}={}", key, value));
+    }
+
+    // Use the osquery-rust-test image
+    cmd.arg(OSQUERY_TEST_IMAGE);
+
+    // Build the shell command to run inside container
+    // 1. Set up environment for extensions
+    // 2. Start osqueryd with extensions in background
+    // 3. Wait for socket
+    // 4. Run cargo test
+    let mut shell_cmd = String::from(
+        r#"
+# Set up directories and files for extensions
+mkdir -p /var/log/osquery
+touch /var/log/osquery/test.log
+
+# Export environment for extensions BEFORE starting osqueryd
+# logger-file extension reads FILE_LOGGER_PATH at startup
+export FILE_LOGGER_PATH=/var/log/osquery/test.log
+# config-static extension writes marker file at startup
+export TEST_CONFIG_MARKER_FILE=/tmp/config_marker.txt
+
+# Start osqueryd with extensions in background
+/opt/osquery/bin/osqueryd --ephemeral --disable_extensions=false \
+  --extensions_socket=/var/osquery/osquery.em \
+  --extensions_autoload=/etc/osquery/extensions.load \
+  --config_plugin=static_config \
+  --logger_plugin=file_logger \
+  --database_path=/tmp/osquery.db \
+  --disable_watchdog --force 2>/dev/null &
+
+# Wait for socket to appear and extensions to register
+for i in $(seq 1 20); do
+  if [ -S /var/osquery/osquery.em ]; then
+    sleep 3
+    break
+  fi
+  sleep 1
+done
+
+# Set up test environment variables (tests read these)
+export OSQUERY_SOCKET=/var/osquery/osquery.em
+export TEST_LOGGER_FILE=/var/log/osquery/test.log
+
+# Debug: show what extensions are loaded
+/usr/bin/osqueryi --connect /var/osquery/osquery.em --json "SELECT name FROM osquery_extensions WHERE name != 'core';" 2>/dev/null || true
+
+# Debug: show logger file contents
+echo "Logger file contents:"
+cat /var/log/osquery/test.log 2>/dev/null || echo "(empty)"
+
+# Run cargo test
+"#,
+    );
+
+    shell_cmd.push_str("cargo test --features osquery-tests --test integration_test");
+    if let Some(filter) = test_filter {
+        shell_cmd.push(' ');
+        shell_cmd.push_str(filter);
+    }
+    shell_cmd.push_str(" -- --nocapture 2>&1");
+
+    cmd.arg("sh").arg("-c").arg(&shell_cmd);
+
+    // Run the command
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run docker: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let combined = format!("{}\n{}", stdout, stderr);
+
+    if output.status.success() {
+        Ok(combined)
+    } else {
+        Err(format!(
+            "Tests failed with exit code {:?}:\n{}",
+            output.status.code(),
+            combined
+        ))
+    }
+}
+
+/// Get the project root directory.
+///
+/// This function finds the root of the osquery-rust workspace by looking
+/// for Cargo.toml in parent directories.
+#[allow(dead_code)]
+pub fn find_project_root() -> Option<std::path::PathBuf> {
+    let mut current = std::env::current_dir().ok()?;
+
+    loop {
+        // Check for workspace Cargo.toml (has [workspace] section)
+        let cargo_toml = current.join("Cargo.toml");
+        if cargo_toml.exists() {
+            if let Ok(contents) = std::fs::read_to_string(&cargo_toml) {
+                if contents.contains("[workspace]") {
+                    return Some(current);
+                }
+            }
+        }
+
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::panic)] // Integration tests can panic on infra failures
 mod tests {

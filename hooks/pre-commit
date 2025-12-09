@@ -166,7 +166,7 @@ if [ -n "$OSQUERYD" ]; then
     export TEST_LOGGER_FILE="$TEST_LOG_FILE"
 
     # Run integration tests
-    OSQUERY_SOCKET="$SOCKET_PATH" cargo test --test integration_test -- --nocapture
+    OSQUERY_SOCKET="$SOCKET_PATH" cargo test --features osquery-tests --test integration_test -- --nocapture
 
 elif command -v docker &> /dev/null; then
     echo "osquery not installed locally, using Docker (slower)..."
@@ -286,7 +286,7 @@ elif command -v docker &> /dev/null; then
         ls -la /var/osquery/ 2>/dev/null || echo 'Socket directory not found'
 
         # Run tests with autoload logger file path
-        OSQUERY_SOCKET=/var/osquery/osquery.em TEST_LOGGER_FILE=$TEST_LOG_FILE cargo test --test integration_test -- --nocapture
+        OSQUERY_SOCKET=/var/osquery/osquery.em TEST_LOGGER_FILE=$TEST_LOG_FILE cargo test --features osquery-tests --test integration_test -- --nocapture
     "
 else
     echo "Error: Neither osquery nor Docker is available"

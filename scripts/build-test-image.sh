@@ -44,19 +44,29 @@ echo ""
 echo "Verifying osquery..."
 docker run --rm "$IMAGE_TAG" osqueryi --json "SELECT 1 AS test;"
 
-# Verify extension works (start osqueryd, wait, query via osqueryi --connect)
+# Verify Rust toolchain is present
 echo ""
-echo "Verifying extension..."
+echo "Verifying Rust toolchain..."
+docker run --rm "$IMAGE_TAG" cargo --version
+docker run --rm "$IMAGE_TAG" rustc --version
+
+# Verify ALL extensions load (start osqueryd, wait, query osquery_extensions)
+echo ""
+echo "Verifying all extensions load..."
 docker run --rm "$IMAGE_TAG" sh -c '
 /opt/osquery/bin/osqueryd --ephemeral --disable_extensions=false \
   --extensions_socket=/var/osquery/osquery.em \
   --extensions_autoload=/etc/osquery/extensions.load \
   --database_path=/tmp/osquery.db \
   --disable_watchdog --force 2>/dev/null &
-for i in $(seq 1 10); do
-  if [ -S /var/osquery/osquery.em ]; then sleep 2; break; fi
+for i in $(seq 1 15); do
+  if [ -S /var/osquery/osquery.em ]; then sleep 3; break; fi
   sleep 1
 done
+echo "Loaded extensions:"
+/usr/bin/osqueryi --connect /var/osquery/osquery.em --json "SELECT name, type FROM osquery_extensions WHERE name != \"core\";"
+echo ""
+echo "Testing two-tables extension (t1 table):"
 /usr/bin/osqueryi --connect /var/osquery/osquery.em --json "SELECT * FROM t1 LIMIT 1;"
 '
 
@@ -70,3 +80,7 @@ echo "      --extensions_autoload=/etc/osquery/extensions.load --database_path=/
 echo "      --disable_watchdog --force &"
 echo "    sleep 5"
 echo "    osqueryi --connect /var/osquery/osquery.em \"SELECT * FROM t1;\"'"
+echo ""
+echo "To run cargo test inside container:"
+echo "  docker run --rm -v \$(pwd):/workspace -w /workspace $IMAGE_TAG \\"
+echo "    sh -c 'osqueryd --ephemeral ... & sleep 5 && cargo test --test integration_test'"

@@ -4,9 +4,16 @@
 # osquery inside the container. This enables testcontainers-based integration
 # tests that work on all platforms (macOS, Linux, CI).
 #
+# The image includes Rust toolchain to support running `cargo test` inside
+# the container (required for tests that need Unix socket access to osquery).
+#
 # Usage:
 #   docker build -t osquery-rust-test:latest -f docker/Dockerfile.test .
 #   docker run --rm osquery-rust-test:latest osqueryi "SELECT 1;"
+#
+# Running cargo test inside container:
+#   docker run --rm -v $(pwd):/workspace -w /workspace osquery-rust-test:latest \
+#     sh -c 'osqueryd --ephemeral ... & sleep 5 && cargo test --test integration_test'
 
 # Stage 1: Build extensions using Rust
 # Using rust:latest (1.85+) for edition 2024 support
@@ -28,8 +35,9 @@ COPY examples examples
 # Build all example extensions in release mode
 RUN cargo build --release -p two-tables -p writeable-table -p config-static -p logger-file
 
-# Stage 2: Runtime with osquery (install from tar.gz for multi-arch support)
-FROM ubuntu:22.04
+# Stage 2: Runtime with osquery AND Rust toolchain
+# Start from rust:latest to keep toolchain, then add osquery
+FROM rust:latest
 
 # Install osquery from GitHub releases (supports both amd64 and arm64)
 ARG OSQUERY_VERSION=5.20.0
@@ -57,10 +65,18 @@ COPY --from=builder /build/target/release/logger-file /opt/osquery/extensions/lo
 RUN chmod +x /opt/osquery/extensions/*
 
 # Create directories
-RUN mkdir -p /etc/osquery /var/osquery
+RUN mkdir -p /etc/osquery /var/osquery /workspace
 
-# Create autoload configuration for two-tables (default for testing)
-RUN echo "/opt/osquery/extensions/two-tables.ext" > /etc/osquery/extensions.load
+# Create autoload configuration with ALL extensions
+# Each extension registers under its own name in osquery_extensions table
+RUN printf '%s\n' \
+    "/opt/osquery/extensions/two-tables.ext" \
+    "/opt/osquery/extensions/logger-file.ext" \
+    "/opt/osquery/extensions/config-static.ext" \
+    > /etc/osquery/extensions.load
+
+# Set working directory for cargo test
+WORKDIR /workspace
 
 # Default command: start osqueryd with extensions enabled
 CMD ["osqueryd", "--ephemeral", "--disable_extensions=false", \
