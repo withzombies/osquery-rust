@@ -555,37 +555,23 @@ mod tests {
 
         eprintln!("Log file contents:\n{}", log_contents);
 
-        // Count lines that are actual log entries (not just init/shutdown markers)
-        // Log entries from log_status have severity markers like [INFO], [WARN], [ERROR]
-        // Log entries from log_string have timestamps but no severity
-        // Health checks have [HEALTH_CHECK]
-        let log_entry_count = log_contents
+        // Look for specific osquery core log messages
+        // osquery logs from C++ source files have the format: [SEVERITY] filename.cpp:line - message
+        // For example: "[INFO] interface.cpp:137 - Registering extension"
+        //
+        // We verify the logger receives actual osquery core messages, not just plugin output
+        let has_osquery_core_log = log_contents
             .lines()
-            .filter(|line| {
-                // Count lines with timestamps that are actual log entries
-                line.contains('[')
-                    && (line.contains("[INFO]")
-                        || line.contains("[WARN]")
-                        || line.contains("[ERROR]")
-                        || line.contains("[HEALTH_CHECK]")
-                        || line.contains("[SNAPSHOT]"))
-            })
-            .count();
+            .any(|line| line.contains(".cpp:") && line.contains(" - "));
 
-        // osquery sends status logs during startup when logger_plugin is active
-        // At minimum we expect health checks from osquery's health monitoring
         assert!(
-            log_entry_count > 0,
-            "Autoloaded logger should receive at least one log entry (log_status or health check). \
-             Found {} log entries. Log file contents:\n{}",
-            log_entry_count,
+            has_osquery_core_log,
+            "Autoloaded logger should receive osquery core log messages (format: 'file.cpp:line - message'). \
+             Log file contents:\n{}",
             log_contents
         );
 
-        eprintln!(
-            "SUCCESS: Autoloaded logger received {} log entries",
-            log_entry_count
-        );
+        eprintln!("SUCCESS: Autoloaded logger received osquery core log messages");
     }
 
     /// Test that the autoloaded config-static extension provides configuration to osquery.
