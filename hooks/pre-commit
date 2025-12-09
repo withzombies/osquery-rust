@@ -1,7 +1,10 @@
 #!/bin/bash
 
 # Pre-commit hook for osquery-rust
-# Runs formatting, linting, unit tests, and integration tests (in Docker)
+# Runs formatting, linting, unit tests, and Docker-based integration tests
+#
+# All integration tests run inside Docker containers via testcontainers-rs,
+# eliminating the need for bash-based osquery process management.
 
 set -e
 
@@ -33,274 +36,30 @@ if ! cargo test --doc; then
     exit 1
 fi
 
-# Run integration tests with osquery
-echo "Running integration tests..."
-
-# Find osqueryd - check common locations (macOS app bundle, Linux, PATH)
-OSQUERYD=""
-if command -v osqueryd &> /dev/null; then
-    OSQUERYD="osqueryd"
-elif [ -x "/opt/osquery/lib/osquery.app/Contents/MacOS/osqueryd" ]; then
-    # macOS: osqueryd is inside the app bundle, osqueryi is a symlink to it
-    OSQUERYD="/opt/osquery/lib/osquery.app/Contents/MacOS/osqueryd"
-fi
-
-# Prefer local osqueryd (daemon mode) for full functionality including config/logger plugins
-if [ -n "$OSQUERYD" ]; then
-    echo "Using locally installed osqueryd (daemon mode)..."
-
-    # Strip trailing slash from TMPDIR if present
-    TMPDIR_CLEAN="${TMPDIR%/}"
-    SOCKET_DIR="${TMPDIR_CLEAN:-/tmp}/osquery-precommit-$$"
-    SOCKET_PATH="$SOCKET_DIR/osquery.em"
-    DB_PATH="$SOCKET_DIR/osquery.db"
-    LOG_PATH="$SOCKET_DIR/logs"
-    AUTOLOAD_PATH="$SOCKET_DIR/autoload"
-    TEST_LOG_FILE="$SOCKET_DIR/test_logger.log"
-
-    cleanup() {
-        echo "Cleaning up osquery..."
-        # Kill osqueryd and any extension processes
-        pkill -f "osqueryd.*$SOCKET_PATH" 2>/dev/null || true
-        pkill -f "logger-file.*$SOCKET_PATH" 2>/dev/null || true
-        pkill -f "config_static.*$SOCKET_PATH" 2>/dev/null || true
-        rm -rf "$SOCKET_DIR" 2>/dev/null || true
-    }
-    trap cleanup EXIT
-
-    # Create directories
-    mkdir -p "$SOCKET_DIR" "$LOG_PATH" "$AUTOLOAD_PATH"
-
-    # Build the logger-file extension for autoload testing (it's a workspace package)
-    echo "Building logger-file extension for autoload..."
-    cargo build -p logger-file --quiet
-
-    # Get absolute path to the extension binary
-    EXTENSION_BIN="$(pwd)/target/debug/logger-file"
-    if [ ! -f "$EXTENSION_BIN" ]; then
-        echo "ERROR: Extension binary not found at $EXTENSION_BIN"
-        exit 1
-    fi
-    echo "Extension binary: $EXTENSION_BIN"
-
-    # osquery requires extensions to end in .ext for autoload
-    # Create a symlink with .ext suffix
-    EXTENSION_PATH="$AUTOLOAD_PATH/logger-file.ext"
-    ln -sf "$EXTENSION_BIN" "$EXTENSION_PATH"
-    echo "Extension symlink: $EXTENSION_PATH -> $EXTENSION_BIN"
-
-    # Create autoload configuration (just the path - osquery adds --socket automatically)
-    # The log file path is passed via FILE_LOGGER_PATH env var
-    echo "$EXTENSION_PATH" > "$AUTOLOAD_PATH/extensions.load"
-    echo "Autoload config:"
-    cat "$AUTOLOAD_PATH/extensions.load"
-
-    # Set the log file path via environment variable (the extension reads FILE_LOGGER_PATH)
-    export FILE_LOGGER_PATH="$TEST_LOG_FILE"
-    echo "FILE_LOGGER_PATH=$FILE_LOGGER_PATH"
-
-    # Build the config-static extension for autoload testing
-    echo "Building config-static extension for autoload..."
-    cargo build -p config-static --quiet
-
-    # Get absolute path to the config-static extension binary
-    # Note: binary is named config_static (underscore) per Cargo.toml [[bin]] section
-    CONFIG_EXTENSION_BIN="$(pwd)/target/debug/config_static"
-    if [ ! -f "$CONFIG_EXTENSION_BIN" ]; then
-        echo "ERROR: Config extension binary not found at $CONFIG_EXTENSION_BIN"
-        exit 1
-    fi
-    echo "Config extension binary: $CONFIG_EXTENSION_BIN"
-
-    # Create symlink with .ext suffix for config-static
-    CONFIG_EXTENSION_PATH="$AUTOLOAD_PATH/config_static.ext"
-    ln -sf "$CONFIG_EXTENSION_BIN" "$CONFIG_EXTENSION_PATH"
-    echo "Config extension symlink: $CONFIG_EXTENSION_PATH -> $CONFIG_EXTENSION_BIN"
-
-    # Add config-static to autoload configuration
-    echo "$CONFIG_EXTENSION_PATH" >> "$AUTOLOAD_PATH/extensions.load"
-    echo "Updated autoload config:"
-    cat "$AUTOLOAD_PATH/extensions.load"
-
-    # Set the config marker file path via environment variable
-    TEST_CONFIG_MARKER="$SOCKET_DIR/config_marker.txt"
-    export TEST_CONFIG_MARKER_FILE="$TEST_CONFIG_MARKER"
-    echo "TEST_CONFIG_MARKER_FILE=$TEST_CONFIG_MARKER_FILE"
-
-    # Start osqueryd in ephemeral mode with autoload and file_logger plugin
-    # extensions_timeout must be set high enough for the extension to load and register
-    # before osquery tries to activate the file_logger plugin
-    echo "Starting osqueryd: $OSQUERYD"
-    "$OSQUERYD" \
-        --ephemeral \
-        --disable_extensions=false \
-        --extensions_socket="$SOCKET_PATH" \
-        --extensions_autoload="$AUTOLOAD_PATH/extensions.load" \
-        --extensions_timeout=30 \
-        --database_path="$DB_PATH" \
-        --logger_plugin=filesystem,file_logger \
-        --logger_path="$LOG_PATH" \
-        --config_plugin=static_config \
-        --disable_watchdog \
-        --force &
-    OSQUERY_PID=$!
-
-    # Wait for socket to be ready
-    echo "Waiting for osquery socket..."
-    for i in {1..30}; do
-        if [ -S "$SOCKET_PATH" ]; then
-            echo "osquery socket ready at $SOCKET_PATH"
-            break
-        fi
-        if [ $i -eq 30 ]; then
-            echo "Error: Timeout waiting for osquery socket"
-            exit 1
-        fi
-        sleep 1
-    done
-
-    # Give extension time to register
-    sleep 2
-
-    # Export test log file path for integration tests
-    export TEST_LOGGER_FILE="$TEST_LOG_FILE"
-
-    # Run integration tests
-    OSQUERY_SOCKET="$SOCKET_PATH" cargo test --features osquery-tests --test integration_test -- --nocapture
-
-elif command -v docker &> /dev/null; then
-    echo "osquery not installed locally, using Docker (slower)..."
-
-    CONTAINER_NAME="osquery-integration-test-$$"
-    OSQUERY_IMAGE="osquery/osquery:5.17.0-ubuntu22.04"
-    TEST_LOG_FILE="/tmp/test_logger.log"
-
-    cleanup() {
-        echo "Cleaning up Docker container..."
-        docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
-    }
-    trap cleanup EXIT
-
-    # Start container first (we'll start osqueryd after building extensions)
-    echo "Starting Docker container..."
-    docker run -d \
-        --name "$CONTAINER_NAME" \
-        --platform linux/amd64 \
-        -v "$(pwd):/workspace" \
-        -w /workspace \
-        "$OSQUERY_IMAGE" \
-        sleep infinity
-
-    # Wait for container to be ready
-    sleep 2
-
-    # Install Rust, build extensions, start osqueryd with autoload, and run tests
-    echo "Setting up Rust, building extensions, and running integration tests..."
-    docker exec "$CONTAINER_NAME" bash -c "
-        set -e
-
-        # Install build dependencies
-        apt-get update -qq
-        apt-get install -y -qq curl build-essential >/dev/null
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --quiet
-        source ~/.cargo/env
-
-        cd /workspace
-
-        # Use a separate target directory for Linux builds (avoid conflicts with host macOS builds)
-        export CARGO_TARGET_DIR=/tmp/cargo-target
-
-        # Build the logger-file extension for autoload testing (it's a workspace package)
-        echo 'Building logger-file extension...'
-        cargo build -p logger-file --quiet
-
-        # Verify extension binary was built
-        if [ ! -f /tmp/cargo-target/debug/logger-file ]; then
-            echo 'ERROR: logger-file binary not found after build'
-            exit 1
-        fi
-        echo 'Extension binary built: /tmp/cargo-target/debug/logger-file'
-        ls -la /tmp/cargo-target/debug/logger-file
-
-        # Create autoload directory and config
-        mkdir -p /tmp/osquery_autoload /tmp/osquery_logs
-
-        # osquery requires extensions to end in .ext for autoload
-        # Create a symlink with .ext suffix
-        EXTENSION_PATH='/tmp/osquery_autoload/logger-file.ext'
-        ln -sf /tmp/cargo-target/debug/logger-file \"\$EXTENSION_PATH\"
-        echo \"Extension symlink: \$EXTENSION_PATH -> /tmp/cargo-target/debug/logger-file\"
-
-        # Create autoload configuration (just the path - osquery adds --socket automatically)
-        # The log file path is passed via FILE_LOGGER_PATH env var
-        echo \"\$EXTENSION_PATH\" > /tmp/osquery_autoload/extensions.load
-        echo 'Autoload config:'
-        cat /tmp/osquery_autoload/extensions.load
-
-        # Set the log file path via environment variable (the extension reads FILE_LOGGER_PATH)
-        export FILE_LOGGER_PATH='$TEST_LOG_FILE'
-        echo \"FILE_LOGGER_PATH=\$FILE_LOGGER_PATH\"
-
-        # Start osqueryd with autoload and file_logger plugin
-        # extensions_timeout must be set high enough for the extension to load and register
-        # before osquery tries to activate the file_logger plugin
-        echo 'Starting osqueryd with autoload...'
-        osqueryd \\
-            --ephemeral \\
-            --disable_extensions=false \\
-            --extensions_socket=/var/osquery/osquery.em \\
-            --extensions_autoload=/tmp/osquery_autoload/extensions.load \\
-            --extensions_timeout=30 \\
-            --database_path=/tmp/osquery.db \\
-            --logger_plugin=filesystem,file_logger \\
-            --logger_path=/tmp/osquery_logs \\
-            --config_path=/dev/null \\
-            --disable_watchdog \\
-            --force &
-
-        # Wait for osquery socket
-        echo 'Waiting for osquery socket...'
-        for i in {1..30}; do
-            if [ -S /var/osquery/osquery.em ]; then
-                echo 'osquery socket ready'
-                break
-            fi
-            sleep 1
-        done
-
-        # Give extension time to register
-        sleep 5
-
-        # Debug: Check if osqueryd is running and extension registered
-        echo 'Checking osqueryd status...'
-        ps aux | grep osquery || echo 'No osquery processes found'
-        echo ''
-        echo 'Checking for log file...'
-        ls -la $TEST_LOG_FILE 2>/dev/null || echo 'Log file not found yet'
-        if [ -f $TEST_LOG_FILE ]; then
-            echo 'Log file contents:'
-            cat $TEST_LOG_FILE
-        fi
-        echo ''
-        echo 'Checking socket...'
-        ls -la /var/osquery/ 2>/dev/null || echo 'Socket directory not found'
-
-        # Run tests with autoload logger file path
-        OSQUERY_SOCKET=/var/osquery/osquery.em TEST_LOGGER_FILE=$TEST_LOG_FILE cargo test --features osquery-tests --test integration_test -- --nocapture
-    "
+# Run Docker-based integration tests
+# These tests use testcontainers-rs to spin up osquery inside Docker containers.
+# No local osquery installation required - everything runs in isolated containers.
+echo "Running Docker-based integration tests..."
+if ! command -v docker &> /dev/null; then
+    echo "Warning: Docker not available, skipping integration tests"
+    echo "Install Docker to run full test suite: https://docs.docker.com/get-docker/"
 else
-    echo "Error: Neither osquery nor Docker is available"
-    echo "Install osquery: brew install osquery (macOS) or see https://osquery.io/downloads"
-    echo "Or install Docker: https://docs.docker.com/get-docker/"
-    exit 1
-fi
+    # Ensure test image is built
+    if ! docker image inspect osquery-rust-test:latest &> /dev/null; then
+        echo "Building osquery-rust-test Docker image (first time only)..."
+        ./scripts/build-test-image.sh
+    fi
 
-if [ $? -ne 0 ]; then
-    echo "Error: Integration tests failed"
-    exit 1
-fi
+    if ! cargo test --features docker-tests --test test_integration_docker -- --nocapture; then
+        echo "Error: Docker integration tests failed. Please fix them before committing."
+        exit 1
+    fi
 
-echo "Integration tests passed"
+    if ! cargo test --features docker-tests --test test_client_docker -- --nocapture; then
+        echo "Error: Docker client tests failed. Please fix them before committing."
+        exit 1
+    fi
+fi
 
 echo "All checks passed. Proceeding with commit."
 exit 0
