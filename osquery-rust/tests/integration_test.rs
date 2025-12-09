@@ -617,7 +617,8 @@ mod tests {
         eprintln!("Config marker verified: gen_config() was called");
 
         // Part 2: Verify osquery is using the configuration by querying osquery_schedule
-        // The static_config plugin provides a schedule with a "file_events" query
+        // The static_config plugin provides a canary schedule with a unique name and query
+        // that could only exist if our config was applied by osquery
         let socket_path = get_osquery_socket();
         let mut client = ThriftClient::new(&socket_path, Default::default())
             .expect("Failed to create ThriftClient");
@@ -637,35 +638,40 @@ mod tests {
 
         eprintln!("osquery_schedule contents: {:?}", rows);
 
-        // The static_config plugin adds scheduled queries with specific SQL
-        // Verify both the name AND the query content match what we expect
-        let file_events_row = rows
+        // Look for the canary schedule - this unique name proves our config was applied
+        const CANARY_NAME: &str = "rust_config_canary_7f3d2a";
+        const CANARY_VALUE: &str = "canary_value_abc123";
+
+        let canary_row = rows
             .iter()
-            .find(|row| row.get("name").map(|n| n == "file_events").unwrap_or(false));
+            .find(|row| row.get("name").map(|n| n == CANARY_NAME).unwrap_or(false));
 
         assert!(
-            file_events_row.is_some(),
-            "osquery_schedule should contain 'file_events' query from static_config. \
+            canary_row.is_some(),
+            "osquery_schedule should contain canary schedule '{}' from static_config. \
+             This proves the config plugin was called and osquery applied the configuration. \
              Found schedules: {:?}",
+            CANARY_NAME,
             rows.iter()
                 .filter_map(|r| r.get("name"))
                 .collect::<Vec<_>>()
         );
 
-        // Verify the query content matches what our config plugin provides
-        let file_events_query = file_events_row
+        // Verify the canary query contains the expected canary value
+        let canary_query = canary_row
             .and_then(|row| row.get("query"))
-            .expect("file_events should have a query column");
+            .expect("canary schedule should have a query column");
 
         assert!(
-            file_events_query.contains("file_events"),
-            "file_events query should contain 'file_events' table reference, found: {}",
-            file_events_query
+            canary_query.contains(CANARY_VALUE),
+            "Canary query should contain '{}', found: {}",
+            CANARY_VALUE,
+            canary_query
         );
 
         eprintln!(
-            "SUCCESS: Config plugin provided 'file_events' schedule with query: {}",
-            file_events_query
+            "SUCCESS: Config plugin canary verified - schedule '{}' with query: {}",
+            CANARY_NAME, canary_query
         );
     }
 

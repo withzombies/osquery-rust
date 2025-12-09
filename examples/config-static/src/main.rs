@@ -25,6 +25,7 @@ impl ConfigPlugin for FileEventsConfigPlugin {
 
         // Static configuration that enables file events on /tmp
         // Also includes a fast scheduled query for testing log_snapshot functionality
+        // The canary schedule has a unique name that proves this config was applied
         let config = r#"{
   "options": {
     "host_identifier": "hostname",
@@ -44,6 +45,11 @@ impl ConfigPlugin for FileEventsConfigPlugin {
     "osquery_info_snapshot": {
       "query": "SELECT version, build_platform FROM osquery_info;",
       "interval": 3,
+      "snapshot": true
+    },
+    "rust_config_canary_7f3d2a": {
+      "query": "SELECT 'canary_value_abc123' AS canary;",
+      "interval": 86400,
       "snapshot": true
     }
   },
@@ -129,6 +135,26 @@ mod tests {
             .and_then(|o| o.get("enable_file_events"))
             .and_then(|v| v.as_str());
         assert_eq!(enable_file_events, Some("true"));
+    }
+
+    #[test]
+    fn test_gen_config_has_canary_schedule() {
+        let plugin = FileEventsConfigPlugin;
+        let config_map = plugin.gen_config().expect("should succeed");
+        let main_config = config_map.get("main").expect("should have main");
+        let parsed: serde_json::Value =
+            serde_json::from_str(main_config).expect("should be valid JSON");
+
+        // Check canary schedule exists with expected query
+        let canary_query = parsed
+            .get("schedule")
+            .and_then(|s| s.get("rust_config_canary_7f3d2a"))
+            .and_then(|c| c.get("query"))
+            .and_then(|v| v.as_str());
+        assert_eq!(
+            canary_query,
+            Some("SELECT 'canary_value_abc123' AS canary;")
+        );
     }
 
     #[test]
