@@ -447,7 +447,7 @@ pub fn find_project_root() -> Option<std::path::PathBuf> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::panic)] // Integration tests can panic on infra failures
+#[allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)] // Integration tests can panic on infra failures
 mod tests {
     use super::*;
     use std::os::unix::fs::FileTypeExt;
@@ -559,5 +559,192 @@ mod tests {
             "Result should contain t1 table columns: {}",
             result
         );
+    }
+
+    /// Test INSERT, UPDATE, DELETE operations on writeable_table.
+    ///
+    /// The writeable-table extension provides a fully functional writeable table
+    /// that stores data in a BTreeMap. Initial data: (0, foo, foo), (1, bar, bar), (2, baz, baz).
+    ///
+    /// This test verifies:
+    /// - INSERT creates new rows with correct values
+    /// - UPDATE modifies existing rows
+    /// - DELETE removes rows
+    /// - Each operation is strictly verified via SELECT queries
+    ///
+    /// REQUIRES: Run `./scripts/build-test-image.sh` first to build the image.
+    #[test]
+    fn test_writeable_table_crud_operations() {
+        /// Parse JSON output from osqueryi --json into a Vec of rows.
+        fn parse_json_rows(output: &str) -> Vec<serde_json::Value> {
+            // osqueryi --json returns a JSON array, possibly with debug lines before it
+            // Find the JSON array in the output
+            let trimmed = output.trim();
+            if let Some(start) = trimmed.find('[') {
+                if let Ok(rows) = serde_json::from_str::<Vec<serde_json::Value>>(&trimmed[start..])
+                {
+                    return rows;
+                }
+            }
+            Vec::new()
+        }
+
+        let container = OsqueryTestContainer::new()
+            .start()
+            .expect("Failed to start osquery-rust-test container");
+
+        // Give extensions time to register
+        thread::sleep(Duration::from_secs(3));
+
+        // =========================================================
+        // 1. VERIFY INITIAL STATE (exactly 3 rows: foo, bar, baz)
+        // =========================================================
+        let result = exec_query(&container, "SELECT * FROM writeable_table;")
+            .expect("Initial SELECT failed");
+        println!("Initial state: {}", result);
+
+        let rows = parse_json_rows(&result);
+        assert_eq!(
+            rows.len(),
+            3,
+            "Expected exactly 3 initial rows, got {}. Output: {}",
+            rows.len(),
+            result
+        );
+
+        // Verify exact initial data exists
+        assert!(
+            rows.iter().any(|r| r["name"] == "foo"),
+            "Initial data should contain 'foo'"
+        );
+        assert!(
+            rows.iter().any(|r| r["name"] == "bar"),
+            "Initial data should contain 'bar'"
+        );
+        assert!(
+            rows.iter().any(|r| r["name"] == "baz"),
+            "Initial data should contain 'baz'"
+        );
+
+        // =========================================================
+        // 2. TEST INSERT - add a new row
+        // =========================================================
+        let insert_result = exec_query(
+            &container,
+            "INSERT INTO writeable_table (name, lastname) VALUES ('alice', 'smith');",
+        )
+        .expect("INSERT should succeed");
+        println!("INSERT result: {}", insert_result);
+
+        // STRICT VERIFICATION: Query for the new row specifically
+        // Note: rowid is a hidden column, so we must select it explicitly
+        let verify_insert = exec_query(
+            &container,
+            "SELECT rowid, name, lastname FROM writeable_table WHERE name='alice' AND lastname='smith';",
+        )
+        .expect("SELECT after INSERT failed");
+        println!("After INSERT: {}", verify_insert);
+
+        let rows = parse_json_rows(&verify_insert);
+        assert_eq!(
+            rows.len(),
+            1,
+            "Should find exactly 1 inserted row with name='alice'. Output: {}",
+            verify_insert
+        );
+        assert_eq!(rows[0]["name"], "alice", "Inserted name should be 'alice'");
+        assert_eq!(
+            rows[0]["lastname"], "smith",
+            "Inserted lastname should be 'smith'"
+        );
+
+        // Get the rowid for subsequent operations
+        let inserted_rowid = rows[0]["rowid"]
+            .as_str()
+            .expect("inserted row should have rowid");
+        println!("Inserted row has rowid: {}", inserted_rowid);
+
+        // =========================================================
+        // 3. TEST UPDATE - modify the inserted row
+        // =========================================================
+        let update_query = format!(
+            "UPDATE writeable_table SET name='updated_alice' WHERE rowid={};",
+            inserted_rowid
+        );
+        let update_result = exec_query(&container, &update_query).expect("UPDATE should succeed");
+        println!("UPDATE result: {}", update_result);
+
+        // STRICT VERIFICATION: Query to confirm update
+        let verify_update = exec_query(
+            &container,
+            &format!(
+                "SELECT rowid, name, lastname FROM writeable_table WHERE rowid={};",
+                inserted_rowid
+            ),
+        )
+        .expect("SELECT after UPDATE failed");
+        println!("After UPDATE: {}", verify_update);
+
+        let rows = parse_json_rows(&verify_update);
+        assert_eq!(
+            rows.len(),
+            1,
+            "Row should still exist after UPDATE. Output: {}",
+            verify_update
+        );
+        assert_eq!(
+            rows[0]["name"], "updated_alice",
+            "Name should be updated to 'updated_alice'"
+        );
+        assert_eq!(
+            rows[0]["lastname"], "smith",
+            "Lastname should be unchanged (still 'smith')"
+        );
+
+        // =========================================================
+        // 4. TEST DELETE - remove the row we created
+        // =========================================================
+        let delete_query = format!(
+            "DELETE FROM writeable_table WHERE rowid={};",
+            inserted_rowid
+        );
+        let delete_result = exec_query(&container, &delete_query).expect("DELETE should succeed");
+        println!("DELETE result: {}", delete_result);
+
+        // STRICT VERIFICATION: Row should be gone
+        let verify_delete = exec_query(
+            &container,
+            &format!(
+                "SELECT rowid, name, lastname FROM writeable_table WHERE rowid={};",
+                inserted_rowid
+            ),
+        )
+        .expect("SELECT after DELETE failed");
+        println!("After DELETE: {}", verify_delete);
+
+        let rows = parse_json_rows(&verify_delete);
+        assert_eq!(
+            rows.len(),
+            0,
+            "Deleted row should not exist. Output: {}",
+            verify_delete
+        );
+
+        // =========================================================
+        // 5. VERIFY FINAL STATE (back to exactly 3 original rows)
+        // =========================================================
+        let final_result =
+            exec_query(&container, "SELECT * FROM writeable_table;").expect("Final SELECT failed");
+        println!("Final state: {}", final_result);
+
+        let rows = parse_json_rows(&final_result);
+        assert_eq!(
+            rows.len(),
+            3,
+            "Should have exactly 3 rows after full CRUD cycle (no side effects). Output: {}",
+            final_result
+        );
+
+        println!("SUCCESS: All CRUD operations verified on writeable_table");
     }
 }

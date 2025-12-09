@@ -73,6 +73,7 @@ RUN printf '%s\n' \
     "/opt/osquery/extensions/two-tables.ext" \
     "/opt/osquery/extensions/logger-file.ext" \
     "/opt/osquery/extensions/config-static.ext" \
+    "/opt/osquery/extensions/writeable-table.ext" \
     > /etc/osquery/extensions.load
 
 # Set working directory for cargo test
