@@ -360,11 +360,19 @@ export TEST_CONFIG_MARKER_FILE=/tmp/config_marker.txt
   --database_path=/tmp/osquery.db \
   --disable_watchdog --force 2>/dev/null &
 
-# Wait for socket to appear and extensions to register
-for i in $(seq 1 20); do
+# Wait for socket and extensions using osqueryi --connect (faster than fixed sleeps)
+for i in $(seq 1 30); do
   if [ -S /var/osquery/osquery.em ]; then
-    sleep 3
-    break
+    # Try to connect and verify extensions are registered
+    if /usr/bin/osqueryi --connect /var/osquery/osquery.em -c "SELECT name FROM osquery_extensions WHERE name = 'file_logger'" 2>/dev/null | grep -q file_logger; then
+      echo "Extensions registered successfully"
+      # Trigger log events by running queries - this generates status logs immediately
+      /usr/bin/osqueryi --connect /var/osquery/osquery.em -c "SELECT * FROM osquery_info" 2>/dev/null > /dev/null
+      /usr/bin/osqueryi --connect /var/osquery/osquery.em -c "SELECT * FROM osquery_schedule" 2>/dev/null > /dev/null
+      # Brief wait for scheduler to run at least once (3 second interval)
+      sleep 4
+      break
+    fi
   fi
   sleep 1
 done

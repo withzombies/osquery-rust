@@ -24,10 +24,11 @@ impl ConfigPlugin for FileEventsConfigPlugin {
         let mut config_map = HashMap::new();
 
         // Static configuration that enables file events on /tmp
+        // Also includes a fast scheduled query for testing log_snapshot functionality
         let config = r#"{
   "options": {
     "host_identifier": "hostname",
-    "schedule_splay_percent": 10,
+    "schedule_splay_percent": 0,
     "enable_file_events": "true",
     "disable_events": "false",
     "events_expiry": "3600",
@@ -37,7 +38,13 @@ impl ConfigPlugin for FileEventsConfigPlugin {
     "file_events": {
       "query": "SELECT * FROM file_events;",
       "interval": 10,
-      "removed": false
+      "removed": false,
+      "snapshot": true
+    },
+    "osquery_info_snapshot": {
+      "query": "SELECT version, build_platform FROM osquery_info;",
+      "interval": 3,
+      "snapshot": true
     }
   },
   "file_paths": {

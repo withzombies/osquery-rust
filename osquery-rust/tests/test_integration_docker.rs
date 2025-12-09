@@ -87,6 +87,7 @@ fn test_category_b_server_tests_in_docker() {
 /// Tests included:
 /// - test_autoloaded_logger_receives_init
 /// - test_autoloaded_logger_receives_logs
+/// - test_autoloaded_logger_receives_snapshots
 /// - test_autoloaded_config_provides_config
 #[test]
 #[allow(clippy::expect_used)]
@@ -126,6 +127,26 @@ fn test_category_c_autoload_tests_in_docker() {
     assert!(
         result.is_ok(),
         "test_autoloaded_logger_receives_logs failed: {:?}",
+        result.err()
+    );
+
+    // Run autoloaded logger receives snapshots test
+    let result = run_integration_tests_in_docker(
+        &project_root,
+        Some("test_autoloaded_logger_receives_snapshots"),
+        &[],
+    );
+
+    match &result {
+        Ok(output) => println!(
+            "test_autoloaded_logger_receives_snapshots output:\n{}",
+            output
+        ),
+        Err(e) => println!("test_autoloaded_logger_receives_snapshots error:\n{}", e),
+    }
+    assert!(
+        result.is_ok(),
+        "test_autoloaded_logger_receives_snapshots failed: {:?}",
         result.err()
     );
 

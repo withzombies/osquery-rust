@@ -148,7 +148,8 @@ impl LoggerPlugin for FileLoggerPlugin {
     }
 
     fn features(&self) -> i32 {
-        LoggerFeatures::LOG_STATUS
+        // Support both status logs and event logs (for scheduled query snapshots)
+        LoggerFeatures::LOG_STATUS | LoggerFeatures::LOG_EVENT
     }
 }
 
@@ -204,10 +205,14 @@ mod tests {
     }
 
     #[test]
-    fn test_features_includes_log_status() {
+    fn test_features_includes_log_status_and_log_event() {
         let temp_file = NamedTempFile::new().expect("create temp file");
         let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
-        assert_eq!(logger.features(), LoggerFeatures::LOG_STATUS);
+        // Supports both status logs and event logs (for scheduled query snapshots)
+        assert_eq!(
+            logger.features(),
+            LoggerFeatures::LOG_STATUS | LoggerFeatures::LOG_EVENT
+        );
     }
 
     #[test]

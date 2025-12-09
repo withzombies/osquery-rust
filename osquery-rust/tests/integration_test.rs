@@ -624,4 +624,157 @@ mod tests {
 
         eprintln!("SUCCESS: Config plugin provided configuration and osquery is using it");
     }
+
+    /// Test that the autoloaded logger-file extension receives snapshot logs from scheduled queries.
+    ///
+    /// This test verifies the complete log_snapshot callback path:
+    /// 1. The logger plugin advertises LOG_EVENT feature
+    /// 2. A scheduled query executes (osquery_info_snapshot runs every 3 seconds)
+    /// 3. osquery sends the query results to log_snapshot()
+    /// 4. The logger writes [SNAPSHOT] entries to the log file
+    ///
+    /// The startup script uses `osqueryi --connect` to verify extensions are ready
+    /// and waits for the first scheduled query, so snapshots should exist immediately.
+    ///
+    /// Requires: osqueryd with autoload configured (set up by pre-commit hook)
+    #[test]
+    fn test_autoloaded_logger_receives_snapshots() {
+        use std::fs;
+        use std::process::Command;
+
+        // Get the autoloaded logger's log file path from environment
+        let log_path = match std::env::var("TEST_LOGGER_FILE") {
+            Ok(path) => path,
+            Err(_) => {
+                panic!(
+                    "TEST_LOGGER_FILE not set - this test requires osqueryd with autoload. \
+                     Run via: ./hooks/pre-commit or ./scripts/coverage.sh"
+                );
+            }
+        };
+
+        let socket_path = get_osquery_socket();
+
+        eprintln!(
+            "Testing snapshot logging via osqueryi --connect to {}",
+            socket_path
+        );
+
+        // Use osqueryi --connect to verify osquery is responding and trigger activity
+        // This also verifies the scheduled queries are configured
+        let output = Command::new("osqueryi")
+            .args([
+                "--connect",
+                &socket_path,
+                "--json",
+                "SELECT name FROM osquery_schedule WHERE name = 'osquery_info_snapshot'",
+            ])
+            .output();
+
+        match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                eprintln!("osquery_schedule query result: {}", stdout);
+                if !stdout.contains("osquery_info_snapshot") {
+                    eprintln!(
+                        "Warning: osquery_info_snapshot not in schedule. \
+                         Snapshots may come from other scheduled queries."
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "osqueryi --connect failed (may be expected in some envs): {}",
+                    e
+                );
+            }
+        }
+
+        // Check for snapshot entries - they should already exist from startup
+        // The startup script waits for the first scheduled query execution
+        let log_contents = fs::read_to_string(&log_path).unwrap_or_else(|e| {
+            panic!(
+                "Failed to read autoloaded logger file '{}': {}",
+                log_path, e
+            );
+        });
+
+        eprintln!("Log file contents:\n{}", log_contents);
+
+        // Count [SNAPSHOT] entries - these come from scheduled query results
+        let snapshot_count = log_contents
+            .lines()
+            .filter(|line| line.contains("[SNAPSHOT]"))
+            .count();
+
+        if snapshot_count > 0 {
+            eprintln!(
+                "SUCCESS: Autoloaded logger received {} snapshot entries from scheduled queries",
+                snapshot_count
+            );
+
+            // Verify the snapshot contains expected data from osquery_info query
+            // The osquery_info_snapshot query selects version and build_platform
+            let has_expected_content = log_contents.lines().any(|line| {
+                line.contains("[SNAPSHOT]")
+                    && (line.contains("version") || line.contains("build_platform"))
+            });
+
+            assert!(
+                has_expected_content,
+                "Snapshot should contain osquery_info data (version or build_platform). \
+                 Log contents:\n{}",
+                log_contents
+            );
+
+            return;
+        }
+
+        // If no snapshots yet (rare), briefly poll with short timeout
+        eprintln!("No snapshots found yet, polling briefly...");
+        let start = std::time::Instant::now();
+        let timeout = Duration::from_secs(5);
+        let poll_interval = Duration::from_millis(500);
+
+        loop {
+            std::thread::sleep(poll_interval);
+
+            let log_contents = fs::read_to_string(&log_path).unwrap_or_else(|e| {
+                panic!("Failed to read logger file '{}': {}", log_path, e);
+            });
+
+            let snapshot_count = log_contents
+                .lines()
+                .filter(|line| line.contains("[SNAPSHOT]"))
+                .count();
+
+            if snapshot_count > 0 {
+                eprintln!(
+                    "SUCCESS: Found {} snapshot entries after polling",
+                    snapshot_count
+                );
+
+                let has_expected_content = log_contents.lines().any(|line| {
+                    line.contains("[SNAPSHOT]")
+                        && (line.contains("version") || line.contains("build_platform"))
+                });
+
+                assert!(
+                    has_expected_content,
+                    "Snapshot should contain osquery_info data. Log:\n{}",
+                    log_contents
+                );
+                return;
+            }
+
+            if start.elapsed() >= timeout {
+                panic!(
+                    "No [SNAPSHOT] entries found after {:?}. \
+                     Logger must advertise LOG_EVENT feature and osquery must have \
+                     scheduled queries with snapshot=true. Log:\n{}",
+                    timeout, log_contents
+                );
+            }
+        }
+    }
 }
