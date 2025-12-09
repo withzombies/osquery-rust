@@ -200,3 +200,101 @@ fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Note: Full syslog integration tests require system syslog daemon.
+    // These tests cover the facility parsing and plugin structure.
+
+    #[test]
+    fn test_parse_facility_kern() {
+        let result = SyslogLoggerPlugin::parse_facility("kern");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_facility_user() {
+        let result = SyslogLoggerPlugin::parse_facility("user");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_facility_daemon() {
+        let result = SyslogLoggerPlugin::parse_facility("daemon");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_facility_auth() {
+        let result = SyslogLoggerPlugin::parse_facility("auth");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_facility_local0_through_7() {
+        for i in 0..=7 {
+            let result = SyslogLoggerPlugin::parse_facility(&format!("local{i}"));
+            assert!(result.is_ok(), "local{i} should be valid");
+        }
+    }
+
+    #[test]
+    fn test_parse_facility_case_insensitive() {
+        assert!(SyslogLoggerPlugin::parse_facility("DAEMON").is_ok());
+        assert!(SyslogLoggerPlugin::parse_facility("Daemon").is_ok());
+        assert!(SyslogLoggerPlugin::parse_facility("LOCAL0").is_ok());
+    }
+
+    #[test]
+    fn test_parse_facility_invalid() {
+        let result = SyslogLoggerPlugin::parse_facility("invalid_facility");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown syslog facility"));
+    }
+
+    #[test]
+    fn test_parse_facility_all_standard_facilities() {
+        let facilities = [
+            "kern", "user", "mail", "daemon", "auth", "syslog", "lpr", "news", "uucp", "cron",
+            "authpriv", "ftp",
+        ];
+
+        for facility in &facilities {
+            let result = SyslogLoggerPlugin::parse_facility(facility);
+            assert!(result.is_ok(), "{facility} should be valid");
+        }
+    }
+
+    // Integration test that requires local syslog (Unix socket)
+    #[test]
+    #[cfg(unix)]
+    fn test_new_with_local_syslog() {
+        let result = SyslogLoggerPlugin::new(Facility::LOG_USER, None);
+
+        // macOS always has /var/run/syslog
+        #[cfg(target_os = "macos")]
+        assert!(
+            result.is_ok(),
+            "macOS should have syslog socket at /var/run/syslog: {:?}",
+            result.err()
+        );
+
+        // On Linux/other, syslog availability varies (containers often lack /dev/log)
+        #[cfg(not(target_os = "macos"))]
+        match result {
+            Ok(_) => eprintln!("Syslog available on this system"),
+            Err(e) => eprintln!("Syslog not available: {} (expected in containers)", e),
+        }
+    }
+
+    #[test]
+    fn test_name() {
+        // Can only test name if we have a valid logger instance
+        // Skip if syslog is not available
+        if let Ok(logger) = SyslogLoggerPlugin::new(Facility::LOG_USER, None) {
+            assert_eq!(logger.name(), "syslog_logger");
+        }
+    }
+}

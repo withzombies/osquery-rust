@@ -6,8 +6,13 @@ pub struct Args {
     #[clap(long, value_name = "PATH_TO_SOCKET")]
     pub socket: String,
 
-    /// Path to the log file
-    #[clap(short, long, default_value = "/tmp/osquery-logger.log")]
+    /// Path to the log file (can also be set via FILE_LOGGER_PATH env var)
+    #[clap(
+        short,
+        long,
+        env = "FILE_LOGGER_PATH",
+        default_value = "/tmp/osquery-logger.log"
+    )]
     pub log_file: std::path::PathBuf,
 
     /// Delay in seconds between connectivity checks.

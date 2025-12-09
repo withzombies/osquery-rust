@@ -15,6 +15,12 @@ impl ConfigPlugin for FileEventsConfigPlugin {
     }
 
     fn gen_config(&self) -> Result<HashMap<String, String>, String> {
+        // Write marker file if configured (for testing)
+        // Silently ignore write errors - test will detect missing marker
+        if let Ok(marker_path) = std::env::var("TEST_CONFIG_MARKER_FILE") {
+            let _ = std::fs::write(&marker_path, "Config generated");
+        }
+
         let mut config_map = HashMap::new();
 
         // Static configuration that enables file events on /tmp
@@ -68,4 +74,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     server.run()?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_name() {
+        let plugin = FileEventsConfigPlugin;
+        assert_eq!(plugin.name(), "static_config");
+    }
+
+    #[test]
+    fn test_gen_config_returns_valid_json() {
+        let plugin = FileEventsConfigPlugin;
+        let result = plugin.gen_config();
+
+        assert!(result.is_ok(), "gen_config should succeed");
+        let config_map = result.expect("should have config");
+
+        // Should have "main" key
+        assert!(config_map.contains_key("main"));
+
+        // Config should be valid JSON
+        let main_config = config_map.get("main").expect("should have main");
+        let parsed: serde_json::Value =
+            serde_json::from_str(main_config).expect("should be valid JSON");
+
+        // Verify expected structure
+        assert!(parsed.get("options").is_some());
+        assert!(parsed.get("schedule").is_some());
+        assert!(parsed.get("file_paths").is_some());
+    }
+
+    #[test]
+    fn test_gen_config_has_file_events_enabled() {
+        let plugin = FileEventsConfigPlugin;
+        let config_map = plugin.gen_config().expect("should succeed");
+        let main_config = config_map.get("main").expect("should have main");
+        let parsed: serde_json::Value =
+            serde_json::from_str(main_config).expect("should be valid JSON");
+
+        // Check file events are enabled
+        let enable_file_events = parsed
+            .get("options")
+            .and_then(|o| o.get("enable_file_events"))
+            .and_then(|v| v.as_str());
+        assert_eq!(enable_file_events, Some("true"));
+    }
+
+    #[test]
+    fn test_gen_pack_returns_error_for_unknown_pack() {
+        let plugin = FileEventsConfigPlugin;
+        let result = plugin.gen_pack("nonexistent", "");
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
 }

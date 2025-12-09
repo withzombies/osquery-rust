@@ -156,3 +156,170 @@ fn main() -> std::io::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_table_name() {
+        let table = WriteableTable::new();
+        assert_eq!(table.name(), "writeable_table");
+    }
+
+    #[test]
+    fn test_table_columns() {
+        let table = WriteableTable::new();
+        let cols = table.columns();
+        assert_eq!(cols.len(), 3);
+    }
+
+    #[test]
+    fn test_generate_returns_initial_data() {
+        let table = WriteableTable::new();
+        let response = table.generate(ExtensionPluginRequest::default());
+        let rows = response.response.expect("should have rows");
+
+        // Initial data: foo, bar, baz
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].get("name"), Some(&"foo".to_string()));
+        assert_eq!(rows[1].get("name"), Some(&"bar".to_string()));
+        assert_eq!(rows[2].get("name"), Some(&"baz".to_string()));
+    }
+
+    #[test]
+    fn test_insert_with_auto_rowid() {
+        let mut table = WriteableTable::new();
+
+        // Insert with null rowid (auto-assign)
+        let row = json!([null, "alice", "smith"]);
+        let result = table.insert(true, &row);
+
+        let InsertResult::Success(rowid) = result else {
+            panic!("Expected InsertResult::Success");
+        };
+        assert_eq!(rowid, 3); // Next after 0, 1, 2
+
+        // Verify the row was added
+        let response = table.generate(ExtensionPluginRequest::default());
+        let rows = response.response.expect("should have rows");
+        assert_eq!(rows.len(), 4);
+    }
+
+    #[test]
+    fn test_insert_with_explicit_rowid() {
+        let mut table = WriteableTable::new();
+
+        // Insert with explicit rowid
+        let row = json!([100, "bob", "jones"]);
+        let result = table.insert(false, &row);
+
+        let InsertResult::Success(rowid) = result else {
+            panic!("Expected InsertResult::Success");
+        };
+        assert_eq!(rowid, 100);
+    }
+
+    #[test]
+    fn test_insert_invalid_row_returns_constraint() {
+        let mut table = WriteableTable::new();
+
+        // Invalid row format
+        let row = json!(["invalid"]);
+        let result = table.insert(false, &row);
+
+        assert!(matches!(result, InsertResult::Constraint));
+    }
+
+    #[test]
+    fn test_update_existing_row() {
+        let mut table = WriteableTable::new();
+
+        // Update row 0 (foo -> updated)
+        let row = json!([0, "updated_name", "updated_lastname"]);
+        let result = table.update(0, &row);
+
+        assert!(matches!(result, UpdateResult::Success));
+
+        // Verify the update
+        let response = table.generate(ExtensionPluginRequest::default());
+        let rows = response.response.expect("should have rows");
+        let row0 = rows
+            .iter()
+            .find(|r| r.get("rowid") == Some(&"0".to_string()));
+        assert_eq!(row0.unwrap().get("name"), Some(&"updated_name".to_string()));
+    }
+
+    #[test]
+    fn test_update_invalid_row_returns_error() {
+        let mut table = WriteableTable::new();
+
+        // Invalid row (not an array)
+        let row = json!({"name": "test"});
+        let result = table.update(0, &row);
+
+        assert!(matches!(result, UpdateResult::Err(_)));
+    }
+
+    #[test]
+    fn test_delete_existing_row() {
+        let mut table = WriteableTable::new();
+
+        // Delete row 0
+        let result = table.delete(0);
+        assert!(matches!(result, DeleteResult::Success));
+
+        // Verify deletion
+        let response = table.generate(ExtensionPluginRequest::default());
+        let rows = response.response.expect("should have rows");
+        assert_eq!(rows.len(), 2); // 3 - 1 = 2
+    }
+
+    #[test]
+    fn test_delete_nonexistent_row_returns_error() {
+        let mut table = WriteableTable::new();
+
+        // Try to delete non-existent row
+        let result = table.delete(999);
+
+        assert!(matches!(result, DeleteResult::Err(_)));
+    }
+
+    #[test]
+    fn test_full_crud_workflow() {
+        let mut table = WriteableTable::new();
+
+        // Create
+        let row = json!([null, "new_user", "new_lastname"]);
+        let InsertResult::Success(new_rowid) = table.insert(true, &row) else {
+            panic!("Insert failed");
+        };
+
+        // Read (verify exists)
+        let response = table.generate(ExtensionPluginRequest::default());
+        let rows = response.response.expect("should have rows");
+        assert_eq!(rows.len(), 4);
+
+        // Update
+        let updated = json!([new_rowid, "modified", "user"]);
+        assert!(matches!(
+            table.update(new_rowid, &updated),
+            UpdateResult::Success
+        ));
+
+        // Delete
+        assert!(matches!(table.delete(new_rowid), DeleteResult::Success));
+
+        // Verify final state
+        let response = table.generate(ExtensionPluginRequest::default());
+        let rows = response.response.expect("should have rows");
+        assert_eq!(rows.len(), 3); // Back to original count
+    }
+}
