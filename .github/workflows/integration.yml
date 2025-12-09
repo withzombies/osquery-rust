@@ -11,7 +11,7 @@ env:
 
 jobs:
   integration:
-    name: Integration Tests with osquery
+    name: Docker Integration Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -32,56 +32,9 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install osquery
-        run: |
-          # Add osquery repository
-          export OSQUERY_KEY=1484120AC4E9F8A1A577AEEE97A80C63C9D8B80B
-          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys $OSQUERY_KEY
-          sudo add-apt-repository 'deb [arch=amd64] https://pkg.osquery.io/deb deb main'
-          sudo apt-get update
-          sudo apt-get install -y osquery
+      - name: Build test Docker image
+        run: ./scripts/build-test-image.sh
 
-      - name: Start osqueryd with extensions enabled
-        run: |
-          # Create socket directory
-          sudo mkdir -p /var/osquery
-          sudo chmod 777 /var/osquery
-
-          # Start osqueryd in background with extensions socket
-          sudo osqueryd \
-            --ephemeral \
-            --disable_extensions=false \
-            --extensions_socket=/var/osquery/osquery.em \
-            --pidfile=/var/osquery/osquery.pid \
-            --database_path=/var/osquery/osquery.db \
-            --logger_plugin=filesystem \
-            --logger_path=/tmp/osquery_logs \
-            --verbose &
-
-          # Wait for osquery to start and create socket
-          echo "Waiting for osquery socket..."
-          for i in {1..30}; do
-            if [ -S /var/osquery/osquery.em ]; then
-              echo "osquery socket ready at /var/osquery/osquery.em"
-              break
-            fi
-            if [ $i -eq 30 ]; then
-              echo "Timeout waiting for osquery socket"
-              exit 1
-            fi
-            sleep 1
-          done
-
-      - name: Build integration tests
-        run: cargo build --test integration_test
-
-      - name: Run integration tests
-        env:
-          OSQUERY_SOCKET: /var/osquery/osquery.em
-        run: cargo test --test integration_test -- --nocapture
-        timeout-minutes: 5
-
-      - name: Stop osquery
-        if: always()
-        run: |
-          sudo pkill osqueryd || true
+      - name: Run Docker-based integration tests
+        run: cargo test --features docker-tests --test test_integration_docker -- --nocapture
+        timeout-minutes: 15
