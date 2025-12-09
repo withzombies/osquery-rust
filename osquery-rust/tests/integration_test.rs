@@ -637,13 +637,14 @@ mod tests {
 
         eprintln!("osquery_schedule contents: {:?}", rows);
 
-        // The static_config plugin adds a "file_events" scheduled query
-        let has_file_events = rows
+        // The static_config plugin adds scheduled queries with specific SQL
+        // Verify both the name AND the query content match what we expect
+        let file_events_row = rows
             .iter()
-            .any(|row| row.get("name").map(|n| n == "file_events").unwrap_or(false));
+            .find(|row| row.get("name").map(|n| n == "file_events").unwrap_or(false));
 
         assert!(
-            has_file_events,
+            file_events_row.is_some(),
             "osquery_schedule should contain 'file_events' query from static_config. \
              Found schedules: {:?}",
             rows.iter()
@@ -651,7 +652,21 @@ mod tests {
                 .collect::<Vec<_>>()
         );
 
-        eprintln!("SUCCESS: Config plugin provided configuration and osquery is using it");
+        // Verify the query content matches what our config plugin provides
+        let file_events_query = file_events_row
+            .and_then(|row| row.get("query"))
+            .expect("file_events should have a query column");
+
+        assert!(
+            file_events_query.contains("file_events"),
+            "file_events query should contain 'file_events' table reference, found: {}",
+            file_events_query
+        );
+
+        eprintln!(
+            "SUCCESS: Config plugin provided 'file_events' schedule with query: {}",
+            file_events_query
+        );
     }
 
     /// Test that the autoloaded logger-file extension receives snapshot logs from scheduled queries.
