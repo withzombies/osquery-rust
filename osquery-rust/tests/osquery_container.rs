@@ -1,17 +1,25 @@
 //! Test helper: OsqueryContainer for testcontainers
 //!
 //! Provides Docker-based osquery instances for integration tests.
+//!
+//! Two container types are available:
+//! - `OsqueryContainer`: Basic osquery container (vanilla osquery/osquery image)
+//! - `OsqueryTestContainer`: Pre-built image with Rust extensions already installed
 
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
-use testcontainers::core::{Mount, WaitFor};
+use testcontainers::core::{ExecCommand, Mount, WaitFor};
 use testcontainers::Image;
 
 /// Docker image for osquery
 const OSQUERY_IMAGE: &str = "osquery/osquery";
 const OSQUERY_TAG: &str = "5.17.0-ubuntu22.04";
+
+/// Pre-built test image with Rust extensions
+const OSQUERY_TEST_IMAGE: &str = "osquery-rust-test";
+const OSQUERY_TEST_TAG: &str = "latest";
 
 /// Builder for creating osquery containers with various plugin configurations.
 #[derive(Debug, Clone)]
@@ -186,6 +194,106 @@ impl Image for OsqueryContainer {
     }
 }
 
+// ============================================================================
+// OsqueryTestContainer - Pre-built image with Rust extensions
+// ============================================================================
+
+/// Container using the pre-built osquery-rust-test image with extensions installed.
+///
+/// This container has osquery and Rust extensions pre-built inside, making it
+/// suitable for integration tests that run entirely within Docker (no cross-VM
+/// socket issues on macOS).
+///
+/// # Example
+/// ```ignore
+/// let container = OsqueryTestContainer::new().start().expect("start");
+/// let result = exec_query(&container, "SELECT * FROM t1 LIMIT 1;");
+/// assert!(result.contains("left"));
+/// ```
+#[derive(Debug, Clone)]
+pub struct OsqueryTestContainer {
+    /// Additional environment variables
+    env_vars: Vec<(String, String)>,
+}
+
+impl Default for OsqueryTestContainer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OsqueryTestContainer {
+    /// Create a new OsqueryTestContainer with default settings.
+    pub fn new() -> Self {
+        Self {
+            env_vars: Vec::new(),
+        }
+    }
+
+    /// Add an environment variable.
+    #[allow(dead_code)]
+    pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.env_vars.push((key.into(), value.into()));
+        self
+    }
+}
+
+impl Image for OsqueryTestContainer {
+    fn name(&self) -> &str {
+        OSQUERY_TEST_IMAGE
+    }
+
+    fn tag(&self) -> &str {
+        OSQUERY_TEST_TAG
+    }
+
+    fn ready_conditions(&self) -> Vec<WaitFor> {
+        vec![
+            // Wait for osqueryd to start the extension manager and load extensions
+            // The two-tables extension registers as "two-tables" in logs
+            WaitFor::message_on_either_std("Extension manager service starting"),
+        ]
+    }
+
+    fn env_vars(
+        &self,
+    ) -> impl IntoIterator<Item = (impl Into<Cow<'_, str>>, impl Into<Cow<'_, str>>)> {
+        self.env_vars.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
+}
+
+/// Execute an SQL query inside the container using osqueryi --connect.
+///
+/// Returns the raw stdout output (typically JSON).
+///
+/// # Errors
+/// Returns an error string if the exec fails or times out.
+#[allow(dead_code)]
+pub fn exec_query(
+    container: &testcontainers::Container<OsqueryTestContainer>,
+    query: &str,
+) -> Result<String, String> {
+    // Use osqueryi --connect to query the running osqueryd
+    let cmd = ExecCommand::new([
+        "/usr/bin/osqueryi",
+        "--connect",
+        "/var/osquery/osquery.em",
+        "--json",
+        query,
+    ]);
+
+    let mut result = container
+        .exec(cmd)
+        .map_err(|e| format!("Failed to exec command: {}", e))?;
+
+    // Read stdout from the exec result
+    let stdout = result
+        .stdout_to_vec()
+        .map_err(|e| format!("Failed to read stdout: {}", e))?;
+
+    String::from_utf8(stdout).map_err(|e| format!("Invalid UTF-8 in output: {}", e))
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::panic)] // Integration tests can panic on infra failures
 mod tests {
@@ -263,5 +371,41 @@ mod tests {
         // Note: We cannot test actual connection from host on macOS with Colima
         // because Unix sockets don't work across the VM boundary.
         // The full end-to-end test runs in Docker (see hooks/pre-commit).
+    }
+
+    /// Test that OsqueryTestContainer can query extension tables.
+    ///
+    /// This test uses the pre-built osquery-rust-test image which has the
+    /// two-tables extension installed. It verifies:
+    /// - The container starts with extensions loaded
+    /// - We can query the t1 table (provided by two-tables extension)
+    /// - The query returns expected data
+    ///
+    /// REQUIRES: Run `./scripts/build-test-image.sh` first to build the image.
+    #[test]
+    fn test_osquery_test_container_queries_extension_table() {
+        let container = OsqueryTestContainer::new()
+            .start()
+            .expect("Failed to start osquery-rust-test container");
+
+        // Container started successfully
+        assert!(!container.id().is_empty());
+
+        // Give the extension time to register after osqueryd starts
+        thread::sleep(Duration::from_secs(3));
+
+        // Query the t1 table (provided by two-tables extension)
+        let result =
+            exec_query(&container, "SELECT * FROM t1 LIMIT 1;").expect("query should succeed");
+
+        println!("Query result: {}", result);
+
+        // Verify the result contains expected columns from two-tables extension
+        // The t1 table returns rows with "left" and "right" columns
+        assert!(
+            result.contains("left") && result.contains("right"),
+            "Result should contain t1 table columns: {}",
+            result
+        );
     }
 }

@@ -1,0 +1,70 @@
+# Dockerfile.test - Multi-stage build for osquery extensions testing
+#
+# This Dockerfile builds Rust osquery extensions and runs them alongside
+# osquery inside the container. This enables testcontainers-based integration
+# tests that work on all platforms (macOS, Linux, CI).
+#
+# Usage:
+#   docker build -t osquery-rust-test:latest -f docker/Dockerfile.test .
+#   docker run --rm osquery-rust-test:latest osqueryi "SELECT 1;"
+
+# Stage 1: Build extensions using Rust
+# Using rust:latest (1.85+) for edition 2024 support
+FROM rust:latest AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy entire workspace (BuildKit caching handles efficiency)
+COPY Cargo.toml Cargo.lock ./
+COPY osquery-rust osquery-rust
+COPY examples examples
+
+# Build all example extensions in release mode
+RUN cargo build --release -p two-tables -p writeable-table -p config-static -p logger-file
+
+# Stage 2: Runtime with osquery (install from tar.gz for multi-arch support)
+FROM ubuntu:22.04
+
+# Install osquery from GitHub releases (supports both amd64 and arm64)
+ARG OSQUERY_VERSION=5.20.0
+ARG TARGETARCH
+
+RUN apt-get update && apt-get install -y curl ca-certificates && \
+    # Map Docker arch to osquery arch naming
+    OSQUERY_ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
+    curl -L "https://github.com/osquery/osquery/releases/download/${OSQUERY_VERSION}/osquery-${OSQUERY_VERSION}_1.linux_${OSQUERY_ARCH}.tar.gz" \
+        -o /tmp/osquery.tar.gz && \
+    tar xzf /tmp/osquery.tar.gz -C / && \
+    rm /tmp/osquery.tar.gz && \
+    apt-get remove -y curl && apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+# osquery binaries are now at /usr/bin/osqueryi, /opt/osquery/bin/osqueryd
+
+# Copy built extensions from builder (with .ext suffix for osquery autoload)
+COPY --from=builder /build/target/release/two-tables /opt/osquery/extensions/two-tables.ext
+COPY --from=builder /build/target/release/writeable-table /opt/osquery/extensions/writeable-table.ext
+COPY --from=builder /build/target/release/config_static /opt/osquery/extensions/config-static.ext
+COPY --from=builder /build/target/release/logger-file /opt/osquery/extensions/logger-file.ext
+
+# Make extensions executable
+RUN chmod +x /opt/osquery/extensions/*
+
+# Create directories
+RUN mkdir -p /etc/osquery /var/osquery
+
+# Create autoload configuration for two-tables (default for testing)
+RUN echo "/opt/osquery/extensions/two-tables.ext" > /etc/osquery/extensions.load
+
+# Default command: start osqueryd with extensions enabled
+CMD ["osqueryd", "--ephemeral", "--disable_extensions=false", \
+     "--extensions_socket=/var/osquery/osquery.em", \
+     "--extensions_autoload=/etc/osquery/extensions.load", \
+     "--database_path=/tmp/osquery.db", \
+     "--disable_watchdog", "--force", "--verbose"]

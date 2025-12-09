@@ -1,0 +1,16 @@
+# Ignore local build artifacts
+target/
+
+# Ignore git directory
+.git/
+
+# Ignore IDE files
+.idea/
+.vscode/
+
+# Ignore test artifacts
+*.log
+coverage/
+
+# Ignore Docker build context waste
+.dockerignore
