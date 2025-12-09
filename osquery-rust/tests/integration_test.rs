@@ -94,6 +94,49 @@ mod tests {
         }
     }
 
+    /// Wait for an extension to be registered in osquery.
+    /// Polls `osquery_extensions` table until the extension name appears or timeout.
+    fn wait_for_extension_registered(socket_path: &str, extension_name: &str) {
+        use osquery_rust_ng::{OsqueryClient, ThriftClient};
+
+        const REGISTRATION_TIMEOUT: Duration = Duration::from_secs(10);
+        const REGISTRATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+        let start = std::time::Instant::now();
+        let query = format!(
+            "SELECT name FROM osquery_extensions WHERE name = '{}'",
+            extension_name
+        );
+
+        loop {
+            // Try to query for the extension
+            if let Ok(mut client) = ThriftClient::new(socket_path, Default::default()) {
+                if let Ok(response) = client.query(query.clone()) {
+                    if let Some(rows) = response.response {
+                        if !rows.is_empty() {
+                            eprintln!(
+                                "Extension '{}' registered after {:?}",
+                                extension_name,
+                                start.elapsed()
+                            );
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // Check timeout
+            if start.elapsed() >= REGISTRATION_TIMEOUT {
+                panic!(
+                    "Extension '{}' not registered after {:?}",
+                    extension_name, REGISTRATION_TIMEOUT
+                );
+            }
+
+            std::thread::sleep(REGISTRATION_POLL_INTERVAL);
+        }
+    }
+
     /// Test ThriftClient can connect to osquery socket.
     #[test]
     fn test_thrift_client_connects_to_osquery() {
@@ -224,8 +267,8 @@ mod tests {
             server.run().expect("Server run failed");
         });
 
-        // Give osquery time to register extension
-        std::thread::sleep(Duration::from_secs(2));
+        // Wait for extension to register using active polling
+        wait_for_extension_registered(&socket_path, "test_lifecycle");
 
         // Stop server (triggers graceful shutdown)
         stop_handle.stop();
@@ -297,8 +340,8 @@ mod tests {
             server.run().expect("Server run failed");
         });
 
-        // Wait for extension to register
-        std::thread::sleep(Duration::from_secs(2));
+        // Wait for extension to register using active polling
+        wait_for_extension_registered(&socket_path, "test_e2e");
 
         // Query the table through osquery using a separate client
         let mut client = ThriftClient::new(&socket_path, Default::default())
@@ -397,8 +440,8 @@ mod tests {
             server.run().expect("Server run failed");
         });
 
-        // Wait for extension to register
-        std::thread::sleep(Duration::from_secs(2));
+        // Wait for extension to register using active polling
+        wait_for_extension_registered(&socket_path, "test_logger_integration");
 
         // Run some queries to potentially trigger logging
         let mut client = ThriftClient::new(&socket_path, Default::default())
