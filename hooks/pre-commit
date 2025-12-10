@@ -1,10 +1,9 @@
 #!/bin/bash
 
 # Pre-commit hook for osquery-rust
-# Runs formatting, linting, unit tests, and Docker-based integration tests
+# Runs formatting, linting, and unit tests
 #
-# All integration tests run inside Docker containers via testcontainers-rs,
-# eliminating the need for bash-based osquery process management.
+# Integration tests require osquery to be running and are executed in CI.
 
 set -e
 
@@ -34,31 +33,6 @@ echo "Running doc tests..."
 if ! cargo test --doc; then
     echo "Error: Doc tests failed. Please fix them before committing."
     exit 1
-fi
-
-# Run Docker-based integration tests
-# These tests use testcontainers-rs to spin up osquery inside Docker containers.
-# No local osquery installation required - everything runs in isolated containers.
-echo "Running Docker-based integration tests..."
-if ! command -v docker &> /dev/null; then
-    echo "Warning: Docker not available, skipping integration tests"
-    echo "Install Docker to run full test suite: https://docs.docker.com/get-docker/"
-else
-    # Ensure test image is built
-    if ! docker image inspect osquery-rust-test:latest &> /dev/null; then
-        echo "Building osquery-rust-test Docker image (first time only)..."
-        ./scripts/build-test-image.sh
-    fi
-
-    if ! cargo test --features docker-tests --test test_integration_docker -- --nocapture; then
-        echo "Error: Docker integration tests failed. Please fix them before committing."
-        exit 1
-    fi
-
-    if ! cargo test --features docker-tests --test test_client_docker -- --nocapture; then
-        echo "Error: Docker client tests failed. Please fix them before committing."
-        exit 1
-    fi
 fi
 
 echo "All checks passed. Proceeding with commit."

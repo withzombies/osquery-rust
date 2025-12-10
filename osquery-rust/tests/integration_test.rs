@@ -5,11 +5,6 @@
 //!
 //! ## Running the tests
 //!
-//! ### Via Docker (recommended)
-//! ```bash
-//! cargo test --features docker-tests --test test_integration_docker
-//! ```
-//!
 //! ### Via pre-commit hook (sets up osquery automatically)
 //! ```bash
 //! .git/hooks/pre-commit
@@ -22,10 +17,8 @@
 //!
 //! ## Architecture Note
 //!
-//! osquery extensions communicate via Unix domain sockets, which cannot span Docker
-//! container boundaries. Integration tests must run either:
-//! - On a host with osquery installed and running
-//! - Inside a Docker container alongside osqueryd
+//! osquery extensions communicate via Unix domain sockets. Integration tests must run
+//! on a host with osquery installed and running.
 //!
 //! These tests will FAIL (not skip) if osquery socket is not available.
 
