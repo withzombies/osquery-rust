@@ -75,13 +75,17 @@ jobs:
           echo "$PWD/target/debug/two-tables.ext" | sudo tee -a /etc/osquery/extensions.load
 
           # Set up test environment
+          # FILE_LOGGER_PATH is read by the logger-file extension
+          # TEST_LOGGER_FILE is read by the integration tests
+          # They must point to the same file!
+          export FILE_LOGGER_PATH=/tmp/test_logger.log
           export TEST_LOGGER_FILE=/tmp/test_logger.log
           export TEST_CONFIG_MARKER_FILE=/tmp/test_config_marker
           touch "$TEST_LOGGER_FILE"
 
           # Start osqueryd
           # --allow_unsafe is needed for CI where target/debug/ has non-root ownership
-          # -E preserves environment variables so extensions can access TEST_LOGGER_FILE
+          # -E preserves environment variables so extensions can access FILE_LOGGER_PATH
           sudo -E osqueryd --ephemeral \
             --disable_extensions=false \
             --extensions_socket=/var/osquery/osquery.em \
@@ -114,6 +118,7 @@ jobs:
         id: coverage
         run: |
           export OSQUERY_SOCKET=/var/osquery/osquery.em
+          export FILE_LOGGER_PATH=/tmp/test_logger.log
           export TEST_LOGGER_FILE=/tmp/test_logger.log
           export TEST_CONFIG_MARKER_FILE=/tmp/test_config_marker
 
