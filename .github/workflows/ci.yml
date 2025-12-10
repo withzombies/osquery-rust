@@ -1,95 +1,148 @@
-name: Rust CI
+name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
 
 jobs:
-  # Basic build and unit tests on multiple platforms
   build:
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-
+    name: Build
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Set up Rust Toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          override: true
           components: rustfmt, clippy
 
-      - name: Build Project
-        run: cargo build --release --verbose
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
-      - name: Run Unit Tests
-        # Unit tests only - integration tests run in Docker
-        run: cargo test --verbose
+      - name: Run clippy
+        run: cargo clippy --all-features -- -D warnings
 
-  # Full integration tests inside Docker container with osquery
-  integration-tests:
-    name: Integration Tests (Docker)
+      - name: Build
+        run: cargo build --all-features
+
+  test:
+    name: Test & Coverage
     runs-on: ubuntu-latest
     needs: build
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Build test Docker image
-        run: ./scripts/build-test-image.sh
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: llvm-tools-preview
 
-      - name: Run all tests in container
+      - uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Install osquery
         run: |
-          # Run cargo test with all features inside the container
-          # The container has osquery and Rust toolchain installed
-          docker run --rm \
-            -v "$(pwd):/workspace" \
-            -w /workspace \
-            osquery-rust-test:latest \
-            sh -c '
-              # Start osqueryd in background with extensions autoloaded
-              osqueryd --ephemeral \
-                --disable_extensions=false \
-                --extensions_socket=/var/osquery/osquery.em \
-                --extensions_autoload=/etc/osquery/extensions.load \
-                --database_path=/tmp/osquery.db \
-                --disable_watchdog \
-                --force &
+          wget -q https://github.com/osquery/osquery/releases/download/5.20.0/osquery_5.20.0-1.linux_amd64.deb
+          sudo dpkg -i osquery_5.20.0-1.linux_amd64.deb
+          osqueryi --version
 
-              # Wait for osquery socket to be ready
-              for i in $(seq 1 30); do
-                if [ -S /var/osquery/osquery.em ]; then
-                  echo "osquery socket ready"
-                  break
-                fi
-                sleep 1
-              done
+      - name: Build example extensions
+        run: cargo build --examples
 
-              # Set socket path for tests
-              export OSQUERY_SOCKET=/var/osquery/osquery.em
+      - name: Start osqueryd with extensions
+        run: |
+          # Create directories
+          sudo mkdir -p /var/osquery /etc/osquery
 
-              # Run all tests including integration tests
-              cargo test --all-features --verbose
-            '
-        timeout-minutes: 15
+          # Create extensions.load file pointing to our built extensions
+          echo "$PWD/target/debug/examples/config-static" | sudo tee /etc/osquery/extensions.load
+          echo "$PWD/target/debug/examples/logger-file" | sudo tee -a /etc/osquery/extensions.load
+          echo "$PWD/target/debug/examples/two-tables" | sudo tee -a /etc/osquery/extensions.load
+
+          # Set up test environment
+          export TEST_LOGGER_FILE=/tmp/test_logger.log
+          export TEST_CONFIG_MARKER_FILE=/tmp/test_config_marker
+          touch "$TEST_LOGGER_FILE"
+
+          # Start osqueryd
+          sudo osqueryd --ephemeral \
+            --disable_extensions=false \
+            --extensions_socket=/var/osquery/osquery.em \
+            --extensions_autoload=/etc/osquery/extensions.load \
+            --config_plugin=static_config \
+            --logger_plugin=file_logger \
+            --database_path=/tmp/osquery.db \
+            --disable_watchdog \
+            --force &
+
+          # Wait for socket with timeout
+          for i in $(seq 1 30); do
+            if [ -S /var/osquery/osquery.em ]; then
+              echo "osquery socket ready"
+              sudo chmod 777 /var/osquery/osquery.em
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "ERROR: osquery socket not ready after 30s"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Wait for extensions to register
+          sleep 5
+
+      - name: Run coverage
+        id: coverage
+        run: |
+          export OSQUERY_SOCKET=/var/osquery/osquery.em
+          export TEST_LOGGER_FILE=/tmp/test_logger.log
+          export TEST_CONFIG_MARKER_FILE=/tmp/test_config_marker
+
+          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --ignore-filename-regex "_osquery"
+
+          # Calculate coverage
+          if [ -f lcov.info ]; then
+            LINES_HIT=$(grep -E "^LH:" lcov.info | cut -d: -f2 | paste -sd+ | bc)
+            LINES_FOUND=$(grep -E "^LF:" lcov.info | cut -d: -f2 | paste -sd+ | bc)
+            if [ "$LINES_FOUND" -gt 0 ]; then
+              COVERAGE=$(echo "scale=1; $LINES_HIT * 100 / $LINES_FOUND" | bc)
+            else
+              COVERAGE="0.0"
+            fi
+          else
+            echo "ERROR: lcov.info not found"
+            exit 1
+          fi
+
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "Coverage: $COVERAGE%"
+
+          # Enforce 90% threshold (>= 90, not just >)
+          if [ $(echo "$COVERAGE < 90" | bc) -eq 1 ]; then
+            echo "ERROR: Coverage $COVERAGE% is below 90% threshold"
+            exit 1
+          fi
+
+      - name: Update coverage badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: 36626ec8e61a6ccda380befc41f2cae1
+          filename: coverage.json
+          label: coverage
+          message: ${{ steps.coverage.outputs.coverage }}%
+          valColorRange: ${{ steps.coverage.outputs.coverage }}
+          maxColorRange: 100
+          minColorRange: 0
