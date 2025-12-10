@@ -39,10 +39,14 @@ done
 
 cleanup() {
     echo "Cleaning up..."
+    # Kill osqueryd by name since piping to tee makes $! capture tee's PID
+    pkill -f "osqueryd.*extensions_socket.*$CI_DIR" 2>/dev/null || true
     if [ -n "$OSQUERY_PID" ]; then
         kill "$OSQUERY_PID" 2>/dev/null || true
         wait "$OSQUERY_PID" 2>/dev/null || true
     fi
+    # Give osqueryd a moment to exit
+    sleep 1
     rm -rf "$CI_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -227,8 +231,10 @@ echo ""
     test_script+='
 RESULT=$?
 
-# Cleanup
+# Cleanup - use pkill since tee pipe makes $! capture tee PID, not osqueryd
+pkill -f "osqueryd.*extensions_socket" 2>/dev/null || true
 kill $OSQUERY_PID 2>/dev/null || true
+sleep 1
 exit $RESULT
 '
 
