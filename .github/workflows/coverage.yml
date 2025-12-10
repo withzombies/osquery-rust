@@ -27,13 +27,22 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Install osquery
+        run: |
+          # Install osquery from official repository
+          # https://osquery.io/downloads/official
+          curl -L https://pkg.osquery.io/deb/osquery.gpg | sudo apt-key add -
+          sudo add-apt-repository 'deb [arch=amd64] https://pkg.osquery.io/deb deb main'
+          sudo apt-get update
+          sudo apt-get install -y osquery
+
       - name: Build test Docker image
         run: ./scripts/build-test-image.sh
 
       - name: Generate coverage report
         run: |
-          # Run coverage with Docker tests enabled (uses testcontainers)
-          # This exercises real osquery I/O paths in client.rs and server.rs
+          # Run coverage with osquery installed natively for integration tests
+          # Docker tests are also included for additional coverage
           cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --ignore-filename-regex "_osquery"
         timeout-minutes: 15
 
