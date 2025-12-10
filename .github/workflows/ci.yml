@@ -56,107 +56,12 @@ jobs:
           sudo dpkg -i osquery_5.20.0-1.linux_amd64.deb
           osqueryi --version
 
-      - name: Build workspace (including extensions)
+      - name: Build workspace
         run: cargo build --workspace
 
-      # Run osqueryd and tests in a SINGLE step to keep env vars and background process in same shell
-      - name: Run coverage with osqueryd
+      - name: Run coverage with osquery
         id: coverage
-        run: |
-          set -e
-
-          # Create directories
-          sudo mkdir -p /var/osquery /etc/osquery
-
-          # Create .ext symlinks - osquery requires extensions to end in .ext for autoload
-          ln -sf "$PWD/target/debug/config_static" "$PWD/target/debug/config_static.ext"
-          ln -sf "$PWD/target/debug/logger-file" "$PWD/target/debug/logger-file.ext"
-          ln -sf "$PWD/target/debug/two-tables" "$PWD/target/debug/two-tables.ext"
-
-          # Create extensions.load file pointing to our built extensions
-          echo "$PWD/target/debug/config_static.ext" | sudo tee /etc/osquery/extensions.load
-          echo "$PWD/target/debug/logger-file.ext" | sudo tee -a /etc/osquery/extensions.load
-          echo "$PWD/target/debug/two-tables.ext" | sudo tee -a /etc/osquery/extensions.load
-
-          # Set up test environment - these MUST be exported before osqueryd starts
-          export FILE_LOGGER_PATH=/tmp/test_logger.log
-          export TEST_LOGGER_FILE=/tmp/test_logger.log
-          export TEST_CONFIG_MARKER_FILE=/tmp/test_config_marker
-          export OSQUERY_SOCKET=/var/osquery/osquery.em
-
-          # Create log file with correct permissions
-          touch "$TEST_LOGGER_FILE"
-          chmod 666 "$TEST_LOGGER_FILE"
-
-          # Start osqueryd in background (same shell, env vars persist)
-          sudo -E osqueryd --ephemeral \
-            --disable_extensions=false \
-            --extensions_socket=/var/osquery/osquery.em \
-            --extensions_autoload=/etc/osquery/extensions.load \
-            --config_plugin=static_config \
-            --logger_plugin=file_logger \
-            --database_path=/tmp/osquery.db \
-            --disable_watchdog \
-            --allow_unsafe \
-            --force &
-
-          OSQUERY_PID=$!
-          echo "Started osqueryd with PID: $OSQUERY_PID"
-
-          # Wait for socket with timeout
-          for i in $(seq 1 30); do
-            if [ -S /var/osquery/osquery.em ]; then
-              echo "osquery socket ready"
-              sudo chmod 777 /var/osquery/osquery.em
-              break
-            fi
-            if [ $i -eq 30 ]; then
-              echo "ERROR: osquery socket not ready after 30s"
-              exit 1
-            fi
-            sleep 1
-          done
-
-          # Wait for extensions to register and verify osqueryd is still running
-          sleep 5
-          if ! kill -0 $OSQUERY_PID 2>/dev/null; then
-            echo "ERROR: osqueryd died after starting"
-            exit 1
-          fi
-
-          # Verify extensions registered
-          echo "Checking extensions..."
-          osqueryi --socket /var/osquery/osquery.em "SELECT name FROM osquery_extensions WHERE name != 'core';"
-
-          # Verify logger file has content
-          echo "Logger file contents:"
-          cat "$TEST_LOGGER_FILE" || echo "(empty)"
-
-          # Run coverage
-          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --ignore-filename-regex "_osquery"
-
-          # Calculate coverage
-          if [ -f lcov.info ]; then
-            LINES_HIT=$(grep -E "^LH:" lcov.info | cut -d: -f2 | paste -sd+ | bc)
-            LINES_FOUND=$(grep -E "^LF:" lcov.info | cut -d: -f2 | paste -sd+ | bc)
-            if [ "$LINES_FOUND" -gt 0 ]; then
-              COVERAGE=$(echo "scale=1; $LINES_HIT * 100 / $LINES_FOUND" | bc)
-            else
-              COVERAGE="0.0"
-            fi
-          else
-            echo "ERROR: lcov.info not found"
-            exit 1
-          fi
-
-          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
-          echo "Coverage: $COVERAGE%"
-
-          # Enforce 90% threshold
-          if [ $(echo "$COVERAGE < 90" | bc) -eq 1 ]; then
-            echo "ERROR: Coverage $COVERAGE% is below 90% threshold"
-            exit 1
-          fi
+        run: ./scripts/ci-test.sh --coverage
 
       - name: Update coverage badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

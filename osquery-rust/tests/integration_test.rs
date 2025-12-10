@@ -483,7 +483,7 @@ mod tests {
             Err(_) => {
                 panic!(
                     "TEST_LOGGER_FILE not set - this test requires osqueryd with autoload. \
-                     Run via: ./hooks/pre-commit or ./scripts/coverage.sh"
+                     Run via: .git/hooks/pre-commit or ./scripts/ci-test.sh"
                 );
             }
         };
@@ -528,7 +528,7 @@ mod tests {
             Err(_) => {
                 panic!(
                     "TEST_LOGGER_FILE not set - this test requires osqueryd with autoload. \
-                     Run via: ./hooks/pre-commit or ./scripts/coverage.sh"
+                     Run via: .git/hooks/pre-commit or ./scripts/ci-test.sh"
                 );
             }
         };
@@ -585,7 +585,7 @@ mod tests {
             Err(_) => {
                 panic!(
                     "TEST_CONFIG_MARKER_FILE not set - this test requires osqueryd with autoload. \
-                     Run via: ./hooks/pre-commit or ./scripts/coverage.sh"
+                     Run via: .git/hooks/pre-commit or ./scripts/ci-test.sh"
                 );
             }
         };
@@ -691,7 +691,7 @@ mod tests {
             Err(_) => {
                 panic!(
                     "TEST_LOGGER_FILE not set - this test requires osqueryd with autoload. \
-                     Run via: ./hooks/pre-commit or ./scripts/coverage.sh"
+                     Run via: .git/hooks/pre-commit or ./scripts/ci-test.sh"
                 );
             }
         };
