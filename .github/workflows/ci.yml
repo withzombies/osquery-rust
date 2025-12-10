@@ -59,8 +59,12 @@ jobs:
       - name: Build workspace (including extensions)
         run: cargo build --workspace
 
-      - name: Start osqueryd with extensions
+      # Run osqueryd and tests in a SINGLE step to keep env vars and background process in same shell
+      - name: Run coverage with osqueryd
+        id: coverage
         run: |
+          set -e
+
           # Create directories
           sudo mkdir -p /var/osquery /etc/osquery
 
@@ -74,18 +78,17 @@ jobs:
           echo "$PWD/target/debug/logger-file.ext" | sudo tee -a /etc/osquery/extensions.load
           echo "$PWD/target/debug/two-tables.ext" | sudo tee -a /etc/osquery/extensions.load
 
-          # Set up test environment
-          # FILE_LOGGER_PATH is read by the logger-file extension
-          # TEST_LOGGER_FILE is read by the integration tests
-          # They must point to the same file!
+          # Set up test environment - these MUST be exported before osqueryd starts
           export FILE_LOGGER_PATH=/tmp/test_logger.log
           export TEST_LOGGER_FILE=/tmp/test_logger.log
           export TEST_CONFIG_MARKER_FILE=/tmp/test_config_marker
-          touch "$TEST_LOGGER_FILE"
+          export OSQUERY_SOCKET=/var/osquery/osquery.em
 
-          # Start osqueryd
-          # --allow_unsafe is needed for CI where target/debug/ has non-root ownership
-          # -E preserves environment variables so extensions can access FILE_LOGGER_PATH
+          # Create log file with correct permissions
+          touch "$TEST_LOGGER_FILE"
+          chmod 666 "$TEST_LOGGER_FILE"
+
+          # Start osqueryd in background (same shell, env vars persist)
           sudo -E osqueryd --ephemeral \
             --disable_extensions=false \
             --extensions_socket=/var/osquery/osquery.em \
@@ -96,6 +99,9 @@ jobs:
             --disable_watchdog \
             --allow_unsafe \
             --force &
+
+          OSQUERY_PID=$!
+          echo "Started osqueryd with PID: $OSQUERY_PID"
 
           # Wait for socket with timeout
           for i in $(seq 1 30); do
@@ -111,17 +117,22 @@ jobs:
             sleep 1
           done
 
-          # Wait for extensions to register
+          # Wait for extensions to register and verify osqueryd is still running
           sleep 5
+          if ! kill -0 $OSQUERY_PID 2>/dev/null; then
+            echo "ERROR: osqueryd died after starting"
+            exit 1
+          fi
 
-      - name: Run coverage
-        id: coverage
-        run: |
-          export OSQUERY_SOCKET=/var/osquery/osquery.em
-          export FILE_LOGGER_PATH=/tmp/test_logger.log
-          export TEST_LOGGER_FILE=/tmp/test_logger.log
-          export TEST_CONFIG_MARKER_FILE=/tmp/test_config_marker
+          # Verify extensions registered
+          echo "Checking extensions..."
+          osqueryi --socket /var/osquery/osquery.em "SELECT name FROM osquery_extensions WHERE name != 'core';"
 
+          # Verify logger file has content
+          echo "Logger file contents:"
+          cat "$TEST_LOGGER_FILE" || echo "(empty)"
+
+          # Run coverage
           cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --ignore-filename-regex "_osquery"
 
           # Calculate coverage
@@ -141,7 +152,7 @@ jobs:
           echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
           echo "Coverage: $COVERAGE%"
 
-          # Enforce 90% threshold (>= 90, not just >)
+          # Enforce 90% threshold
           if [ $(echo "$COVERAGE < 90" | bc) -eq 1 ]; then
             echo "ERROR: Coverage $COVERAGE% is below 90% threshold"
             exit 1
