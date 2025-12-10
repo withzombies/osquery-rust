@@ -77,6 +77,7 @@ jobs:
           touch "$TEST_LOGGER_FILE"
 
           # Start osqueryd
+          # --allow_unsafe is needed for CI where target/debug/ has non-root ownership
           sudo osqueryd --ephemeral \
             --disable_extensions=false \
             --extensions_socket=/var/osquery/osquery.em \
@@ -85,6 +86,7 @@ jobs:
             --logger_plugin=file_logger \
             --database_path=/tmp/osquery.db \
             --disable_watchdog \
+            --allow_unsafe \
             --force &
 
           # Wait for socket with timeout
