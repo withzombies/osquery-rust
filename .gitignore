@@ -3,7 +3,6 @@ osquery-rust.iml
 
 /examples/*/target
 
-/Cargo.lock
 /target
 
 /thrift/Cargo.lock

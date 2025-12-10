@@ -10,9 +10,14 @@ on:
       - synchronize
       - reopened
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
 jobs:
-  build-and-test:
-    name: Build and Test on ${{ matrix.os }}
+  # Basic build and unit tests on multiple platforms
+  build:
+    name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -35,5 +40,56 @@ jobs:
       - name: Build Project
         run: cargo build --release --verbose
 
-      - name: Run Tests
-        run: cargo test --all-features --verbose
+      - name: Run Unit Tests
+        # Unit tests only - integration tests run in Docker
+        run: cargo test --verbose
+
+  # Full integration tests inside Docker container with osquery
+  integration-tests:
+    name: Integration Tests (Docker)
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build test Docker image
+        run: ./scripts/build-test-image.sh
+
+      - name: Run all tests in container
+        run: |
+          # Run cargo test with all features inside the container
+          # The container has osquery and Rust toolchain installed
+          docker run --rm \
+            -v "$(pwd):/workspace" \
+            -w /workspace \
+            osquery-rust-test:latest \
+            sh -c '
+              # Start osqueryd in background with extensions autoloaded
+              osqueryd --ephemeral \
+                --disable_extensions=false \
+                --extensions_socket=/var/osquery/osquery.em \
+                --extensions_autoload=/etc/osquery/extensions.load \
+                --database_path=/tmp/osquery.db \
+                --disable_watchdog \
+                --force &
+
+              # Wait for osquery socket to be ready
+              for i in $(seq 1 30); do
+                if [ -S /var/osquery/osquery.em ]; then
+                  echo "osquery socket ready"
+                  break
+                fi
+                sleep 1
+              done
+
+              # Set socket path for tests
+              export OSQUERY_SOCKET=/var/osquery/osquery.em
+
+              # Run all tests including integration tests
+              cargo test --all-features --verbose
+            '
+        timeout-minutes: 15
