@@ -148,7 +148,8 @@ impl LoggerPlugin for FileLoggerPlugin {
     }
 
     fn features(&self) -> i32 {
-        LoggerFeatures::LOG_STATUS
+        // Support both status logs and event logs (for scheduled query snapshots)
+        LoggerFeatures::LOG_STATUS | LoggerFeatures::LOG_EVENT
     }
 }
 
@@ -187,5 +188,179 @@ fn main() {
             eprintln!("Server error: {e}");
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_name() {
+        let temp_file = NamedTempFile::new().expect("create temp file");
+        let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
+        assert_eq!(logger.name(), "file_logger");
+    }
+
+    #[test]
+    fn test_features_includes_log_status_and_log_event() {
+        let temp_file = NamedTempFile::new().expect("create temp file");
+        let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
+        // Supports both status logs and event logs (for scheduled query snapshots)
+        assert_eq!(
+            logger.features(),
+            LoggerFeatures::LOG_STATUS | LoggerFeatures::LOG_EVENT
+        );
+    }
+
+    #[test]
+    fn test_log_string_writes_to_file() {
+        let temp_file = NamedTempFile::new().expect("create temp file");
+        let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
+
+        let result = logger.log_string("test message");
+        assert!(result.is_ok());
+
+        let contents = fs::read_to_string(temp_file.path()).expect("read file");
+        assert!(contents.contains("test message"));
+        assert!(contents.contains("]")); // Has timestamp brackets
+    }
+
+    #[test]
+    fn test_log_status_writes_severity_and_location() {
+        let temp_file = NamedTempFile::new().expect("create temp file");
+        let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
+
+        let status = LogStatus {
+            severity: LogSeverity::Warning,
+            filename: "test.rs".to_string(),
+            line: 42,
+            message: "warning message".to_string(),
+        };
+
+        let result = logger.log_status(&status);
+        assert!(result.is_ok());
+
+        let contents = fs::read_to_string(temp_file.path()).expect("read file");
+        assert!(contents.contains("WARN"));
+        assert!(contents.contains("test.rs"));
+        assert!(contents.contains("42"));
+        assert!(contents.contains("warning message"));
+    }
+
+    #[test]
+    fn test_log_status_info_severity() {
+        let temp_file = NamedTempFile::new().expect("create temp file");
+        let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
+
+        let status = LogStatus {
+            severity: LogSeverity::Info,
+            filename: "info.rs".to_string(),
+            line: 1,
+            message: "info message".to_string(),
+        };
+
+        logger.log_status(&status).expect("log status");
+
+        let contents = fs::read_to_string(temp_file.path()).expect("read file");
+        assert!(contents.contains("INFO"));
+    }
+
+    #[test]
+    fn test_log_status_error_severity() {
+        let temp_file = NamedTempFile::new().expect("create temp file");
+        let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
+
+        let status = LogStatus {
+            severity: LogSeverity::Error,
+            filename: "error.rs".to_string(),
+            line: 99,
+            message: "error message".to_string(),
+        };
+
+        logger.log_status(&status).expect("log status");
+
+        let contents = fs::read_to_string(temp_file.path()).expect("read file");
+        assert!(contents.contains("ERROR"));
+    }
+
+    #[test]
+    fn test_log_snapshot_writes_snapshot_marker() {
+        let temp_file = NamedTempFile::new().expect("create temp file");
+        let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
+
+        let result = logger.log_snapshot(r#"{"data": "snapshot"}"#);
+        assert!(result.is_ok());
+
+        let contents = fs::read_to_string(temp_file.path()).expect("read file");
+        assert!(contents.contains("[SNAPSHOT]"));
+        assert!(contents.contains(r#"{"data": "snapshot"}"#));
+    }
+
+    #[test]
+    fn test_init_writes_initialization_message() {
+        let temp_file = NamedTempFile::new().expect("create temp file");
+        let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
+
+        let result = logger.init("test_logger");
+        assert!(result.is_ok());
+
+        let contents = fs::read_to_string(temp_file.path()).expect("read file");
+        assert!(contents.contains("Logger initialized"));
+        assert!(contents.contains("test_logger"));
+    }
+
+    #[test]
+    fn test_health_writes_health_check() {
+        let temp_file = NamedTempFile::new().expect("create temp file");
+        let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
+
+        let result = logger.health();
+        assert!(result.is_ok());
+
+        let contents = fs::read_to_string(temp_file.path()).expect("read file");
+        assert!(contents.contains("[HEALTH_CHECK]"));
+        assert!(contents.contains("OK"));
+    }
+
+    #[test]
+    fn test_shutdown_writes_shutdown_message() {
+        let temp_file = NamedTempFile::new().expect("create temp file");
+        let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
+
+        logger.shutdown();
+
+        let contents = fs::read_to_string(temp_file.path()).expect("read file");
+        assert!(contents.contains("shutting down"));
+    }
+
+    #[test]
+    fn test_multiple_logs_append() {
+        let temp_file = NamedTempFile::new().expect("create temp file");
+        let logger = FileLoggerPlugin::new(temp_file.path().to_path_buf()).expect("create logger");
+
+        logger.log_string("message 1").expect("log 1");
+        logger.log_string("message 2").expect("log 2");
+        logger.log_string("message 3").expect("log 3");
+
+        let contents = fs::read_to_string(temp_file.path()).expect("read file");
+        assert!(contents.contains("message 1"));
+        assert!(contents.contains("message 2"));
+        assert!(contents.contains("message 3"));
+
+        // Verify order (message 1 appears before message 2)
+        let pos1 = contents.find("message 1").expect("find message 1");
+        let pos2 = contents.find("message 2").expect("find message 2");
+        let pos3 = contents.find("message 3").expect("find message 3");
+        assert!(pos1 < pos2);
+        assert!(pos2 < pos3);
+    }
+
+    #[test]
+    fn test_new_fails_on_invalid_path() {
+        let result = FileLoggerPlugin::new(PathBuf::from("/nonexistent/directory/file.log"));
+        assert!(result.is_err());
     }
 }

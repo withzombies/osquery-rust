@@ -10,9 +10,8 @@ use thrift::protocol::*;
 use thrift::transport::*;
 
 use crate::_osquery as osquery;
-use crate::_osquery::{TExtensionManagerSyncClient, TExtensionSyncClient};
-use crate::client::Client;
-use crate::plugin::{OsqueryPlugin, Plugin, Registry};
+use crate::client::{OsqueryClient, ThriftClient};
+use crate::plugin::{OsqueryPlugin, Registry};
 use crate::util::OptionToThriftResult;
 
 const DEFAULT_PING_INTERVAL: Duration = Duration::from_millis(500);
@@ -64,10 +63,11 @@ impl ServerStopHandle {
     }
 }
 
-pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static> {
+pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static, C: OsqueryClient = ThriftClient>
+{
     name: String,
     socket_path: String,
-    client: Client,
+    client: C,
     plugins: Vec<P>,
     ping_interval: Duration,
     uuid: Option<osquery::ExtensionRouteUUID>,
@@ -80,16 +80,19 @@ pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static> {
     listen_path: Option<String>,
 }
 
-impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
+/// Implementation for `Server` using the default `ThriftClient`.
+impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P, ThriftClient> {
+    /// Create a new server that connects to osquery at the given socket path.
+    ///
+    /// # Arguments
+    /// * `name` - Optional extension name (defaults to crate name)
+    /// * `socket_path` - Path to osquery's extension socket
+    ///
+    /// # Errors
+    /// Returns an error if the connection to osquery fails.
     pub fn new(name: Option<&str>, socket_path: &str) -> Result<Self, Error> {
-        let mut reg: HashMap<String, HashMap<String, Plugin>> = HashMap::new();
-        for var in Registry::VARIANTS {
-            reg.insert((*var).to_string(), HashMap::new());
-        }
-
         let name = name.unwrap_or(crate_name!());
-
-        let client = Client::new(socket_path, Default::default())?;
+        let client = ThriftClient::new(socket_path, Default::default())?;
 
         Ok(Server {
             name: name.to_string(),
@@ -103,6 +106,33 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P> {
             listener_thread: None,
             listen_path: None,
         })
+    }
+}
+
+/// Implementation for `Server` with any client type (generic over `C: OsqueryClient`).
+impl<P: OsqueryPlugin + Clone + Send + 'static, C: OsqueryClient> Server<P, C> {
+    /// Create a server with a pre-constructed client.
+    ///
+    /// This constructor is useful for testing, allowing injection of mock clients.
+    ///
+    /// # Arguments
+    /// * `name` - Optional extension name (defaults to crate name)
+    /// * `socket_path` - Path to osquery's extension socket (used for listener socket naming)
+    /// * `client` - Pre-constructed client implementing `OsqueryClient`
+    pub fn with_client(name: Option<&str>, socket_path: &str, client: C) -> Self {
+        let name = name.unwrap_or(crate_name!());
+        Server {
+            name: name.to_string(),
+            socket_path: socket_path.to_string(),
+            client,
+            plugins: Vec::new(),
+            ping_interval: DEFAULT_PING_INTERVAL,
+            uuid: None,
+            started: false,
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
+            listener_thread: None,
+            listen_path: None,
+        }
     }
 
     ///
@@ -539,5 +569,430 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionManagerSyncHandler for Handler<
             },
             vec![],
         ))
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic)] // Tests are allowed to panic on setup failures
+mod tests {
+    use super::*;
+    use crate::client::MockOsqueryClient;
+    use crate::plugin::Plugin;
+    use crate::plugin::{ColumnDef, ColumnOptions, ColumnType, ReadOnlyTable, TablePlugin};
+
+    /// Simple test table for server tests
+    struct TestTable;
+
+    impl ReadOnlyTable for TestTable {
+        fn name(&self) -> String {
+            "test_table".to_string()
+        }
+
+        fn columns(&self) -> Vec<ColumnDef> {
+            vec![ColumnDef::new(
+                "col",
+                ColumnType::Text,
+                ColumnOptions::DEFAULT,
+            )]
+        }
+
+        fn generate(&self, _request: crate::ExtensionPluginRequest) -> crate::ExtensionResponse {
+            crate::ExtensionResponse::new(osquery::ExtensionStatus::default(), vec![])
+        }
+
+        fn shutdown(&self) {}
+    }
+
+    #[test]
+    fn test_server_with_mock_client_creation() {
+        let mock_client = MockOsqueryClient::new();
+        let server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test_ext"), "/tmp/test.sock", mock_client);
+
+        assert_eq!(server.name, "test_ext");
+        assert_eq!(server.socket_path, "/tmp/test.sock");
+        assert!(server.plugins.is_empty());
+    }
+
+    #[test]
+    fn test_server_with_mock_client_default_name() {
+        let mock_client = MockOsqueryClient::new();
+        let server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(None, "/tmp/test.sock", mock_client);
+
+        // Default name comes from crate_name!() which is "osquery-rust-ng"
+        assert_eq!(server.name, "osquery-rust-ng");
+    }
+
+    #[test]
+    fn test_server_register_plugin_with_mock_client() {
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        let plugin = Plugin::Table(TablePlugin::from_readonly_table(TestTable));
+        server.register_plugin(plugin);
+
+        assert_eq!(server.plugins.len(), 1);
+    }
+
+    #[test]
+    fn test_server_register_multiple_plugins() {
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        server.register_plugin(Plugin::Table(TablePlugin::from_readonly_table(TestTable)));
+        server.register_plugin(Plugin::Table(TablePlugin::from_readonly_table(TestTable)));
+
+        assert_eq!(server.plugins.len(), 2);
+    }
+
+    #[test]
+    fn test_server_stop_handle_with_mock_client() {
+        let mock_client = MockOsqueryClient::new();
+        let server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        assert!(server.is_running());
+
+        let handle = server.get_stop_handle();
+        assert!(handle.is_running());
+
+        handle.stop();
+
+        assert!(!server.is_running());
+        assert!(!handle.is_running());
+    }
+
+    #[test]
+    fn test_server_stop_method_with_mock_client() {
+        let mock_client = MockOsqueryClient::new();
+        let server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        assert!(server.is_running());
+        server.stop();
+        assert!(!server.is_running());
+    }
+
+    #[test]
+    fn test_generate_registry_with_mock_client() {
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        server.register_plugin(Plugin::Table(TablePlugin::from_readonly_table(TestTable)));
+
+        let registry = server.generate_registry();
+        assert!(registry.is_ok());
+
+        let registry = registry.ok();
+        assert!(registry.is_some());
+
+        let registry = registry.unwrap_or_default();
+        // Registry should have "table" entry
+        assert!(registry.contains_key("table"));
+    }
+
+    // ========================================================================
+    // cleanup_socket() tests
+    // ========================================================================
+
+    #[test]
+    fn test_cleanup_socket_removes_existing_socket() {
+        use std::fs::File;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let socket_base = temp_dir.path().join("test.sock");
+        let socket_base_str = socket_base.to_string_lossy().to_string();
+
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), &socket_base_str, mock_client);
+
+        // Set uuid to simulate registered state
+        server.uuid = Some(12345);
+
+        // Create the socket file that cleanup_socket expects
+        let socket_path = format!("{}.{}", socket_base_str, 12345);
+        File::create(&socket_path).expect("Failed to create test socket file");
+        assert!(std::path::Path::new(&socket_path).exists());
+
+        // Call cleanup_socket
+        server.cleanup_socket();
+
+        // Verify socket was removed
+        assert!(!std::path::Path::new(&socket_path).exists());
+    }
+
+    #[test]
+    fn test_cleanup_socket_handles_missing_socket() {
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/nonexistent/path/test.sock", mock_client);
+
+        // Set uuid but socket file doesn't exist
+        server.uuid = Some(12345);
+
+        // Should not panic, handles NotFound gracefully
+        server.cleanup_socket();
+    }
+
+    #[test]
+    fn test_cleanup_socket_no_uuid_skips() {
+        let mock_client = MockOsqueryClient::new();
+        let server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        // uuid is None by default - cleanup should return early
+        assert!(server.uuid.is_none());
+
+        // Should not panic and should not try to remove any file
+        server.cleanup_socket();
+    }
+
+    // ========================================================================
+    // notify_plugins_shutdown() tests
+    // ========================================================================
+
+    use crate::plugin::ConfigPlugin;
+    use std::collections::HashMap;
+
+    /// Test config plugin that tracks whether shutdown was called
+    struct ShutdownTrackingConfigPlugin {
+        shutdown_called: Arc<AtomicBool>,
+    }
+
+    impl ShutdownTrackingConfigPlugin {
+        fn new() -> (Self, Arc<AtomicBool>) {
+            let flag = Arc::new(AtomicBool::new(false));
+            (
+                Self {
+                    shutdown_called: Arc::clone(&flag),
+                },
+                flag,
+            )
+        }
+    }
+
+    impl ConfigPlugin for ShutdownTrackingConfigPlugin {
+        fn name(&self) -> String {
+            "shutdown_tracker".to_string()
+        }
+
+        fn gen_config(&self) -> Result<HashMap<String, String>, String> {
+            Ok(HashMap::new())
+        }
+
+        fn gen_pack(&self, _name: &str, _value: &str) -> Result<String, String> {
+            Err("not implemented".to_string())
+        }
+
+        fn shutdown(&self) {
+            self.shutdown_called.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn test_notify_plugins_shutdown_single_plugin() {
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        let (plugin, shutdown_flag) = ShutdownTrackingConfigPlugin::new();
+        server.register_plugin(Plugin::config(plugin));
+
+        assert!(!shutdown_flag.load(Ordering::SeqCst));
+
+        server.notify_plugins_shutdown();
+
+        assert!(shutdown_flag.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_notify_plugins_shutdown_multiple_plugins() {
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        let (plugin1, shutdown_flag1) = ShutdownTrackingConfigPlugin::new();
+        let (plugin2, shutdown_flag2) = ShutdownTrackingConfigPlugin::new();
+        let (plugin3, shutdown_flag3) = ShutdownTrackingConfigPlugin::new();
+
+        server.register_plugin(Plugin::config(plugin1));
+        server.register_plugin(Plugin::config(plugin2));
+        server.register_plugin(Plugin::config(plugin3));
+
+        assert!(!shutdown_flag1.load(Ordering::SeqCst));
+        assert!(!shutdown_flag2.load(Ordering::SeqCst));
+        assert!(!shutdown_flag3.load(Ordering::SeqCst));
+
+        server.notify_plugins_shutdown();
+
+        // All plugins should have been notified
+        assert!(shutdown_flag1.load(Ordering::SeqCst));
+        assert!(shutdown_flag2.load(Ordering::SeqCst));
+        assert!(shutdown_flag3.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_notify_plugins_shutdown_empty_plugins() {
+        let mock_client = MockOsqueryClient::new();
+        let server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        assert!(server.plugins.is_empty());
+
+        // Should not panic with no plugins
+        server.notify_plugins_shutdown();
+    }
+
+    // ========================================================================
+    // join_listener_thread() tests
+    // ========================================================================
+
+    #[test]
+    fn test_join_listener_thread_no_thread() {
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        // listener_thread is None by default
+        assert!(server.listener_thread.is_none());
+
+        // Should return immediately without panic
+        server.join_listener_thread();
+    }
+
+    #[test]
+    fn test_join_listener_thread_finished_thread() {
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        // Create a thread that finishes immediately
+        let thread = thread::spawn(|| {
+            // Thread exits immediately
+        });
+
+        // Wait a bit for thread to finish
+        thread::sleep(Duration::from_millis(10));
+
+        server.listener_thread = Some(thread);
+
+        // Should join successfully
+        server.join_listener_thread();
+
+        // Thread should have been taken
+        assert!(server.listener_thread.is_none());
+    }
+
+    // ========================================================================
+    // wake_listener() tests
+    // ========================================================================
+
+    #[test]
+    fn test_wake_listener_no_path() {
+        let mock_client = MockOsqueryClient::new();
+        let server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        // listen_path is None by default
+        assert!(server.listen_path.is_none());
+
+        // Should not panic with no path
+        server.wake_listener();
+    }
+
+    #[test]
+    fn test_wake_listener_with_path() {
+        use std::os::unix::net::UnixListener;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let socket_path = temp_dir.path().join("test.sock");
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+
+        // Create a Unix listener on the socket
+        let listener = UnixListener::bind(&socket_path).expect("Failed to bind listener");
+
+        // Set non-blocking so accept doesn't hang
+        listener
+            .set_nonblocking(true)
+            .expect("Failed to set non-blocking");
+
+        let mock_client = MockOsqueryClient::new();
+        let mut server: Server<Plugin, MockOsqueryClient> =
+            Server::with_client(Some("test"), "/tmp/test.sock", mock_client);
+
+        server.listen_path = Some(socket_path_str);
+
+        // Call wake_listener
+        server.wake_listener();
+
+        // Verify connection was received (or would have been if blocking)
+        // The connection attempt is best-effort, so we just verify no panic
+        // and that accept would have received something if blocking
+        match listener.accept() {
+            Ok(_) => {
+                // Connection received - wake_listener worked
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                // This can happen in some race conditions, which is fine
+                // The important thing is no panic occurred
+            }
+            Err(e) => {
+                panic!("Unexpected error: {e}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_mock_client_query() {
+        use crate::ExtensionResponse;
+
+        let mut mock_client = MockOsqueryClient::new();
+
+        // Set up expectation for query() method
+        mock_client.expect_query().returning(|sql| {
+            // Return a mock response based on the SQL
+            let status = osquery::ExtensionStatus {
+                code: Some(0),
+                message: Some(format!("Query executed: {sql}")),
+                uuid: None,
+            };
+            Ok(ExtensionResponse::new(status, vec![]))
+        });
+
+        // Call query() and verify behavior
+        let result = mock_client.query("SELECT * FROM test".to_string());
+        assert!(result.is_ok());
+        let response = result.expect("query should succeed");
+        assert_eq!(response.status.as_ref().and_then(|s| s.code), Some(0));
+    }
+
+    #[test]
+    fn test_mock_client_get_query_columns() {
+        use crate::ExtensionResponse;
+
+        let mut mock_client = MockOsqueryClient::new();
+
+        // Set up expectation for get_query_columns() method
+        mock_client.expect_get_query_columns().returning(|sql| {
+            let status = osquery::ExtensionStatus {
+                code: Some(0),
+                message: Some(format!("Columns for: {sql}")),
+                uuid: None,
+            };
+            Ok(ExtensionResponse::new(status, vec![]))
+        });
+
+        // Call get_query_columns() and verify behavior
+        let result = mock_client.get_query_columns("SELECT * FROM test".to_string());
+        assert!(result.is_ok());
+        let response = result.expect("get_query_columns should succeed");
+        assert_eq!(response.status.as_ref().and_then(|s| s.code), Some(0));
     }
 }

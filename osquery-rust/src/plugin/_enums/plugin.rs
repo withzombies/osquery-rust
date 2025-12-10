@@ -92,3 +92,223 @@ impl OsqueryPlugin for Plugin {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugin::logger::LogStatus;
+    use std::collections::{BTreeMap, HashMap};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    // Test ConfigPlugin implementation with observable shutdown
+    struct TestConfigPlugin {
+        shutdown_called: Arc<AtomicBool>,
+    }
+
+    impl TestConfigPlugin {
+        fn new() -> (Self, Arc<AtomicBool>) {
+            let flag = Arc::new(AtomicBool::new(false));
+            (
+                Self {
+                    shutdown_called: Arc::clone(&flag),
+                },
+                flag,
+            )
+        }
+    }
+
+    impl ConfigPlugin for TestConfigPlugin {
+        fn name(&self) -> String {
+            "test_config".to_string()
+        }
+
+        fn gen_config(&self) -> Result<HashMap<String, String>, String> {
+            let mut config = HashMap::new();
+            config.insert("main".to_string(), r#"{"options":{}}"#.to_string());
+            Ok(config)
+        }
+
+        fn gen_pack(&self, name: &str, _value: &str) -> Result<String, String> {
+            if name == "test_pack" {
+                Ok(r#"{"queries":{}}"#.to_string())
+            } else {
+                Err(format!("Pack '{name}' not found"))
+            }
+        }
+
+        fn shutdown(&self) {
+            self.shutdown_called.store(true, Ordering::SeqCst);
+        }
+    }
+
+    // Test LoggerPlugin implementation with observable shutdown
+    struct TestLoggerPlugin {
+        shutdown_called: Arc<AtomicBool>,
+    }
+
+    impl TestLoggerPlugin {
+        fn new() -> (Self, Arc<AtomicBool>) {
+            let flag = Arc::new(AtomicBool::new(false));
+            (
+                Self {
+                    shutdown_called: Arc::clone(&flag),
+                },
+                flag,
+            )
+        }
+    }
+
+    impl LoggerPlugin for TestLoggerPlugin {
+        fn name(&self) -> String {
+            "test_logger".to_string()
+        }
+
+        fn log_string(&self, _message: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn log_status(&self, _statuses: &LogStatus) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn shutdown(&self) {
+            self.shutdown_called.store(true, Ordering::SeqCst);
+        }
+    }
+
+    // ===== Config Plugin Dispatch Tests =====
+
+    #[test]
+    fn test_plugin_config_factory() {
+        let (config, _flag) = TestConfigPlugin::new();
+        let plugin = Plugin::config(config);
+        assert!(matches!(plugin, Plugin::Config(_)));
+    }
+
+    #[test]
+    fn test_plugin_config_name() {
+        let (config, _flag) = TestConfigPlugin::new();
+        let plugin = Plugin::config(config);
+        assert_eq!(plugin.name(), "test_config");
+    }
+
+    #[test]
+    fn test_plugin_config_registry() {
+        let (config, _flag) = TestConfigPlugin::new();
+        let plugin = Plugin::config(config);
+        assert_eq!(plugin.registry(), Registry::Config);
+    }
+
+    #[test]
+    fn test_plugin_config_routes() {
+        let (config, _flag) = TestConfigPlugin::new();
+        let plugin = Plugin::config(config);
+        let routes = plugin.routes();
+        // Config plugins return empty routes
+        assert!(routes.is_empty());
+    }
+
+    #[test]
+    fn test_plugin_config_ping() {
+        let (config, _flag) = TestConfigPlugin::new();
+        let plugin = Plugin::config(config);
+        let status = plugin.ping();
+        assert_eq!(status.code, Some(0));
+    }
+
+    #[test]
+    fn test_plugin_config_handle_call() {
+        let (config, _flag) = TestConfigPlugin::new();
+        let plugin = Plugin::config(config);
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("action".to_string(), "genConfig".to_string());
+
+        let response = plugin.handle_call(request);
+        let status = response.status.as_ref();
+        assert_eq!(status.and_then(|s| s.code), Some(0));
+    }
+
+    #[test]
+    fn test_plugin_config_shutdown() {
+        let (config, shutdown_flag) = TestConfigPlugin::new();
+        let plugin = Plugin::config(config);
+
+        // Verify shutdown hasn't been called yet
+        assert!(!shutdown_flag.load(Ordering::SeqCst));
+
+        // Call shutdown via Plugin dispatch
+        plugin.shutdown();
+
+        // Verify shutdown was actually called on the inner plugin
+        assert!(shutdown_flag.load(Ordering::SeqCst));
+    }
+
+    // ===== Logger Plugin Dispatch Tests =====
+
+    #[test]
+    fn test_plugin_logger_factory() {
+        let (logger, _flag) = TestLoggerPlugin::new();
+        let plugin = Plugin::logger(logger);
+        assert!(matches!(plugin, Plugin::Logger(_)));
+    }
+
+    #[test]
+    fn test_plugin_logger_name() {
+        let (logger, _flag) = TestLoggerPlugin::new();
+        let plugin = Plugin::logger(logger);
+        assert_eq!(plugin.name(), "test_logger");
+    }
+
+    #[test]
+    fn test_plugin_logger_registry() {
+        let (logger, _flag) = TestLoggerPlugin::new();
+        let plugin = Plugin::logger(logger);
+        assert_eq!(plugin.registry(), Registry::Logger);
+    }
+
+    #[test]
+    fn test_plugin_logger_routes() {
+        let (logger, _flag) = TestLoggerPlugin::new();
+        let plugin = Plugin::logger(logger);
+        let routes = plugin.routes();
+        // Logger plugins return routes with their log type
+        // The exact content depends on LoggerPluginWrapper implementation
+        assert!(routes.len() <= 1);
+    }
+
+    #[test]
+    fn test_plugin_logger_ping() {
+        let (logger, _flag) = TestLoggerPlugin::new();
+        let plugin = Plugin::logger(logger);
+        let status = plugin.ping();
+        assert_eq!(status.code, Some(0));
+    }
+
+    #[test]
+    fn test_plugin_logger_handle_call() {
+        let (logger, _flag) = TestLoggerPlugin::new();
+        let plugin = Plugin::logger(logger);
+        let mut request: BTreeMap<String, String> = BTreeMap::new();
+        request.insert("action".to_string(), "init".to_string());
+
+        let response = plugin.handle_call(request);
+        let status = response.status.as_ref();
+        assert_eq!(status.and_then(|s| s.code), Some(0));
+    }
+
+    #[test]
+    fn test_plugin_logger_shutdown() {
+        let (logger, shutdown_flag) = TestLoggerPlugin::new();
+        let plugin = Plugin::logger(logger);
+
+        // Verify shutdown hasn't been called yet
+        assert!(!shutdown_flag.load(Ordering::SeqCst));
+
+        // Call shutdown via Plugin dispatch
+        plugin.shutdown();
+
+        // Verify shutdown was actually called on the inner plugin
+        assert!(shutdown_flag.load(Ordering::SeqCst));
+    }
+}

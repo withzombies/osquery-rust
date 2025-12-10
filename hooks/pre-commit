@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Pre-commit hook for osquery-rust
+# Runs formatting, linting, and unit tests
+#
+# Integration tests require osquery to be running and are executed in CI.
+
+set -e
+
+# Check formatting
+echo "Checking formatting with cargo fmt..."
+if ! cargo fmt --all -- --check; then
+    echo "Error: Code is not formatted. Please run 'cargo fmt --all' before committing."
+    exit 1
+fi
+
+# Run Clippy linter
+echo "Running cargo clippy..."
+if ! cargo clippy --all-targets --all-features -- -D warnings; then
+    echo "Error: Clippy found warnings or errors. Please fix them before committing."
+    exit 1
+fi
+
+# Run unit tests (fast, no external dependencies)
+echo "Running unit tests..."
+if ! cargo test --all --lib; then
+    echo "Error: Unit tests failed. Please fix them before committing."
+    exit 1
+fi
+
+# Run doc tests
+echo "Running doc tests..."
+if ! cargo test --doc; then
+    echo "Error: Doc tests failed. Please fix them before committing."
+    exit 1
+fi
+
+echo "All checks passed. Proceeding with commit."
+exit 0

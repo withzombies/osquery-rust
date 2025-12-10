@@ -1,13 +1,21 @@
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
-#[clap(arg_required_else_help = true)]
 pub struct Args {
-    /// Path to the osquery socket
-    #[clap(long, value_name = "PATH_TO_SOCKET")]
+    /// Path to the osquery socket (can also be set via OSQUERY_SOCKET env var)
+    #[clap(
+        long,
+        env = "OSQUERY_SOCKET",
+        default_value = "/var/osquery/osquery.em"
+    )]
     pub socket: String,
 
-    /// Path to the log file
-    #[clap(short, long, default_value = "/tmp/osquery-logger.log")]
+    /// Path to the log file (can also be set via FILE_LOGGER_PATH env var)
+    #[clap(
+        short,
+        long,
+        env = "FILE_LOGGER_PATH",
+        default_value = "/tmp/osquery-logger.log"
+    )]
     pub log_file: std::path::PathBuf,
 
     /// Delay in seconds between connectivity checks.

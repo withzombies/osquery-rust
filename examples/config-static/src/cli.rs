@@ -8,10 +8,13 @@ use clap::Parser;
     name = "config-static",
     long_about = "A config plugin that provides a static configuration enabling file events monitoring on /tmp"
 )]
-#[command(arg_required_else_help = true)]
 pub struct Args {
-    /// Path to the osquery socket.
-    #[arg(long, value_name = "PATH_TO_SOCKET")]
+    /// Path to the osquery socket (can also be set via OSQUERY_SOCKET env var).
+    #[arg(
+        long,
+        env = "OSQUERY_SOCKET",
+        default_value = "/var/osquery/osquery.em"
+    )]
     pub socket: String,
 
     /// Delay in seconds between connectivity checks.

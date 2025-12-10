@@ -3,11 +3,12 @@
 // Restrict access to osquery API to osquery-rust
 // Users of osquery-rust are not allowed to access osquery API directly
 pub(crate) mod _osquery;
-pub(crate) mod client;
+mod client;
 pub mod plugin;
-pub(crate) mod server;
+mod server;
 mod util;
 
+pub use crate::client::{Client, OsqueryClient, ThriftClient};
 pub use crate::server::{Server, ServerStopHandle};
 
 // Re-exports

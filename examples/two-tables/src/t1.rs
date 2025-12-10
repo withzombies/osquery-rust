@@ -36,3 +36,32 @@ impl ReadOnlyTable for Table1 {
         info!("Table1 shutting down");
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_table1_name() {
+        let table = Table1::new();
+        assert_eq!(table.name(), "t1");
+    }
+
+    #[test]
+    fn test_table1_columns() {
+        let table = Table1::new();
+        let cols = table.columns();
+        assert_eq!(cols.len(), 2);
+    }
+
+    #[test]
+    fn test_table1_generate() {
+        let table = Table1::new();
+        let response = table.generate(ExtensionPluginRequest::default());
+        let rows = response.response.expect("should have rows");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("left"), Some(&"left".to_string()));
+        assert_eq!(rows[0].get("right"), Some(&"right".to_string()));
+    }
+}
