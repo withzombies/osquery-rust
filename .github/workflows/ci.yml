@@ -64,12 +64,15 @@ jobs:
           # Create directories
           sudo mkdir -p /var/osquery /etc/osquery
 
+          # Create .ext symlinks - osquery requires extensions to end in .ext for autoload
+          ln -sf "$PWD/target/debug/config_static" "$PWD/target/debug/config_static.ext"
+          ln -sf "$PWD/target/debug/logger-file" "$PWD/target/debug/logger-file.ext"
+          ln -sf "$PWD/target/debug/two-tables" "$PWD/target/debug/two-tables.ext"
+
           # Create extensions.load file pointing to our built extensions
-          # Note: workspace members are built to target/debug/, not target/debug/examples/
-          # Binary names: config_static (underscore), logger-file, two-tables (hyphens)
-          echo "$PWD/target/debug/config_static" | sudo tee /etc/osquery/extensions.load
-          echo "$PWD/target/debug/logger-file" | sudo tee -a /etc/osquery/extensions.load
-          echo "$PWD/target/debug/two-tables" | sudo tee -a /etc/osquery/extensions.load
+          echo "$PWD/target/debug/config_static.ext" | sudo tee /etc/osquery/extensions.load
+          echo "$PWD/target/debug/logger-file.ext" | sudo tee -a /etc/osquery/extensions.load
+          echo "$PWD/target/debug/two-tables.ext" | sudo tee -a /etc/osquery/extensions.load
 
           # Set up test environment
           export TEST_LOGGER_FILE=/tmp/test_logger.log
