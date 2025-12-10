@@ -8,13 +8,15 @@
 #   --html      Generate HTML coverage report
 #
 # This script:
-# 1. Builds extension examples (logger-file, config-static)
-# 2. Sets up autoload configuration
-# 3. Starts osqueryd with extensions autoloaded
-# 4. Waits for socket AND extensions to be ready
-# 5. Runs integration tests with osquery-tests feature
-# 6. Optionally generates coverage reports
-# 7. Cleans up on exit (success or failure)
+# 1. Detects osqueryd (checks PATH and common install locations)
+# 2. If osqueryd not found, falls back to running tests in Docker
+# 3. Builds extension examples (logger-file, config-static)
+# 4. Sets up autoload configuration
+# 5. Starts osqueryd with extensions autoloaded
+# 6. Waits for socket AND extensions to be ready
+# 7. Runs integration tests with osquery-tests feature
+# 8. Optionally generates coverage reports
+# 9. Cleans up on exit (success or failure)
 
 set -euo pipefail
 
@@ -25,6 +27,7 @@ CI_DIR="/tmp/osquery-ci-$$"
 OSQUERY_PID=""
 COVERAGE=false
 HTML=false
+DOCKER_IMAGE="osquery-rust-test:latest"
 
 # Parse args
 for arg in "$@"; do
@@ -44,19 +47,226 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Detect osquery binaries
-USE_DAEMON=false
-if command -v osqueryd &> /dev/null; then
-    USE_DAEMON=true
-    echo "Found osqueryd - will use daemon mode with autoload"
-elif command -v osqueryi &> /dev/null; then
-    echo "WARNING: osqueryd not found, only osqueryi available"
-    echo "Autoload tests will be skipped. Install full osquery package for complete testing."
-    echo "https://osquery.io/downloads"
+# Find osqueryd binary - check PATH and common install locations
+find_osqueryd() {
+    # Check PATH first
+    if command -v osqueryd &> /dev/null; then
+        command -v osqueryd
+        return 0
+    fi
+
+    # Common installation paths
+    local paths=(
+        "/opt/osquery/bin/osqueryd"        # Linux .deb/.rpm package
+        "/usr/local/bin/osqueryd"          # Manual install / homebrew
+        "/usr/bin/osqueryd"                # System package
+    )
+
+    for path in "${paths[@]}"; do
+        if [ -x "$path" ]; then
+            echo "$path"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# Check if Docker is available
+has_docker() {
+    command -v docker &> /dev/null && docker info &> /dev/null
+}
+
+# Build Docker test image if needed
+build_docker_image() {
+    echo "Building Docker test image..."
+    cd "$PROJECT_ROOT"
+    docker build -t "$DOCKER_IMAGE" -f docker/Dockerfile.test .
+}
+
+# Run tests inside Docker container
+run_tests_in_docker() {
+    echo "=== Running tests in Docker ==="
+
+    # Build the image first
+    build_docker_image
+
+    local docker_args=(
+        "--rm"
+        "-v" "$PROJECT_ROOT:/workspace"
+        "-w" "/workspace"
+        "-e" "CARGO_HOME=/workspace/.cargo-docker"
+    )
+
+    # Set up environment for coverage
+    if [ "$COVERAGE" = true ]; then
+        docker_args+=("-e" "RUSTFLAGS=-C instrument-coverage")
+    fi
+
+    # The entrypoint script handles starting osqueryd and running tests
+    local test_script='
+set -e
+
+# Set up paths - use standard /var/osquery path that extensions default to
+CI_DIR="/var/osquery"
+mkdir -p "$CI_DIR"/{extensions,db,logs}
+chmod 777 "$CI_DIR" "$CI_DIR/extensions" "$CI_DIR/db" "$CI_DIR/logs"
+
+SOCKET_PATH="$CI_DIR/osquery.em"
+EXTENSIONS_DIR="$CI_DIR/extensions"
+DB_PATH="$CI_DIR/db"
+LOGGER_FILE="$CI_DIR/logs/file_logger.log"
+CONFIG_MARKER="$CI_DIR/logs/config_marker.txt"
+
+# Set environment for logger and config plugins
+export FILE_LOGGER_PATH="$LOGGER_FILE"
+export CONFIG_MARKER_PATH="$CONFIG_MARKER"
+
+# Copy pre-built extensions from image
+cp /opt/osquery/extensions/logger-file.ext "$EXTENSIONS_DIR/"
+cp /opt/osquery/extensions/config-static.ext "$EXTENSIONS_DIR/"
+chmod +x "$EXTENSIONS_DIR"/*.ext
+
+# Create extensions.load
+cat > "$CI_DIR/extensions.load" << EXTEOF
+$EXTENSIONS_DIR/logger-file.ext
+$EXTENSIONS_DIR/config-static.ext
+EXTEOF
+
+echo "Starting osqueryd..."
+/opt/osquery/bin/osqueryd \
+    --ephemeral \
+    --force \
+    --disable_watchdog \
+    --disable_extensions=false \
+    --extensions_socket="$SOCKET_PATH" \
+    --extensions_autoload="$CI_DIR/extensions.load" \
+    --extensions_timeout=30 \
+    --extensions_interval=1 \
+    --database_path="$DB_PATH" \
+    --config_plugin=static_config \
+    --logger_plugin=file_logger \
+    --verbose \
+    2>&1 | tee "$CI_DIR/osqueryd.log" &
+OSQUERY_PID=$!
+
+# Wait for socket
+echo "Waiting for osquery socket..."
+for i in {1..30}; do
+    if [ -S "$SOCKET_PATH" ]; then
+        echo "Socket ready"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "ERROR: Socket not ready"
+        cat "$CI_DIR/osqueryd.log"
+        exit 1
+    fi
+    sleep 1
+done
+
+# Wait for extensions
+echo "Waiting for extensions..."
+for i in {1..30}; do
+    EXTENSIONS=$(osqueryi --socket "$SOCKET_PATH" --json \
+        "SELECT name FROM osquery_extensions WHERE name IN ('"'"'file_logger'"'"', '"'"'static_config'"'"')" 2>/dev/null || echo "[]")
+
+    LOGGER_READY=$(echo "$EXTENSIONS" | grep -c "file_logger" || true)
+    CONFIG_READY=$(echo "$EXTENSIONS" | grep -c "static_config" || true)
+
+    if [ "$LOGGER_READY" -ge 1 ] && [ "$CONFIG_READY" -ge 1 ]; then
+        echo "Extensions registered"
+        break
+    fi
+
+    if [ "$i" -eq 30 ]; then
+        echo "ERROR: Extensions not registered"
+        osqueryi --socket "$SOCKET_PATH" "SELECT * FROM osquery_extensions" 2>/dev/null || true
+        cat "$CI_DIR/osqueryd.log"
+        exit 1
+    fi
+    sleep 1
+done
+
+# Wait for first snapshot
+echo "Waiting for first scheduled query..."
+for i in {1..15}; do
+    if [ -f "$LOGGER_FILE" ] && grep -q "SNAPSHOT" "$LOGGER_FILE" 2>/dev/null; then
+        echo "First snapshot logged"
+        break
+    fi
+    if [ "$i" -eq 15 ]; then
+        echo "Warning: No snapshot after 15s"
+    fi
+    sleep 1
+done
+
+# Export for tests
+export OSQUERY_SOCKET="$SOCKET_PATH"
+export TEST_LOGGER_FILE="$LOGGER_FILE"
+export TEST_CONFIG_MARKER_FILE="$CONFIG_MARKER"
+
+echo ""
+echo "=== Running tests ==="
+echo "OSQUERY_SOCKET=$OSQUERY_SOCKET"
+echo "TEST_LOGGER_FILE=$TEST_LOGGER_FILE"
+echo "TEST_CONFIG_MARKER_FILE=$TEST_CONFIG_MARKER_FILE"
+echo ""
+'
+
+    if [ "$COVERAGE" = true ]; then
+        if [ "$HTML" = true ]; then
+            test_script+='cargo llvm-cov --all-features --workspace --html --ignore-filename-regex "_osquery"'
+        else
+            test_script+='cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --ignore-filename-regex "_osquery"'
+        fi
+    else
+        test_script+='cargo test --all-features --workspace'
+    fi
+
+    test_script+='
+RESULT=$?
+
+# Cleanup
+kill $OSQUERY_PID 2>/dev/null || true
+exit $RESULT
+'
+
+    docker run "${docker_args[@]}" "$DOCKER_IMAGE" /bin/bash -c "$test_script"
+
+    # Copy coverage output if generated
+    if [ "$COVERAGE" = true ] && [ -f "$PROJECT_ROOT/lcov.info" ]; then
+        # Calculate coverage percentage
+        if [ -f "$PROJECT_ROOT/lcov.info" ]; then
+            LINES_HIT=$(grep -E "^LH:" "$PROJECT_ROOT/lcov.info" | cut -d: -f2 | paste -sd+ | bc 2>/dev/null || echo 0)
+            LINES_FOUND=$(grep -E "^LF:" "$PROJECT_ROOT/lcov.info" | cut -d: -f2 | paste -sd+ | bc 2>/dev/null || echo 1)
+            COVERAGE_PCT=$(echo "scale=1; $LINES_HIT * 100 / $LINES_FOUND" | bc 2>/dev/null || echo "0")
+            echo "Coverage: $COVERAGE_PCT%"
+            echo "coverage=$COVERAGE_PCT" >> "${GITHUB_OUTPUT:-/dev/null}"
+        fi
+    fi
+}
+
+# ========== MAIN ==========
+
+OSQUERYD_PATH=""
+if OSQUERYD_PATH=$(find_osqueryd); then
+    echo "Found osqueryd at: $OSQUERYD_PATH"
 else
-    echo "ERROR: Neither osqueryd nor osqueryi found in PATH"
-    echo "Install osquery: https://osquery.io/downloads"
-    exit 1
+    echo "osqueryd not found in PATH or common locations"
+
+    if has_docker; then
+        echo "Docker available - will run tests in Docker container"
+        run_tests_in_docker
+        exit 0
+    else
+        echo "ERROR: Neither osqueryd nor Docker available"
+        echo ""
+        echo "To run tests, either:"
+        echo "  1. Install osquery: https://osquery.io/downloads"
+        echo "  2. Install Docker and run: ./scripts/ci-test.sh"
+        exit 1
+    fi
 fi
 
 echo "=== Setting up CI test environment ==="
@@ -73,169 +283,128 @@ CONFIG_MARKER="$CI_DIR/logs/config_marker.txt"
 
 cd "$PROJECT_ROOT"
 
-if [ "$USE_DAEMON" = true ]; then
-    # ========== FULL DAEMON MODE WITH AUTOLOAD ==========
-    # Set environment variables for extensions BEFORE building
-    export FILE_LOGGER_PATH="$LOGGER_FILE"
-    export CONFIG_MARKER_PATH="$CONFIG_MARKER"
+# Set environment variables for extensions BEFORE building
+export FILE_LOGGER_PATH="$LOGGER_FILE"
+export CONFIG_MARKER_PATH="$CONFIG_MARKER"
 
-    echo "Building extensions..."
-    cargo build --workspace 2>&1 | tail -5
+echo "Building extensions..."
+cargo build --workspace 2>&1 | tail -5
 
-    # Copy extensions to autoload directory with .ext suffix
-    echo "Setting up extension autoload..."
-    if [ -f target/debug/logger-file ]; then
-        cp target/debug/logger-file "$EXTENSIONS_DIR/logger-file.ext"
-    else
-        cp target/release/logger-file "$EXTENSIONS_DIR/logger-file.ext"
-    fi
-    if [ -f target/debug/config_static ]; then
-        cp target/debug/config_static "$EXTENSIONS_DIR/config-static.ext"
-    else
-        cp target/release/config_static "$EXTENSIONS_DIR/config-static.ext"
-    fi
-    chmod +x "$EXTENSIONS_DIR"/*.ext
+# Copy extensions to autoload directory with .ext suffix
+echo "Setting up extension autoload..."
+if [ -f target/debug/logger-file ]; then
+    cp target/debug/logger-file "$EXTENSIONS_DIR/logger-file.ext"
+else
+    cp target/release/logger-file "$EXTENSIONS_DIR/logger-file.ext"
+fi
+if [ -f target/debug/config_static ]; then
+    cp target/debug/config_static "$EXTENSIONS_DIR/config-static.ext"
+else
+    cp target/release/config_static "$EXTENSIONS_DIR/config-static.ext"
+fi
+chmod +x "$EXTENSIONS_DIR"/*.ext
 
-    # Create extensions.load file
-    cat > "$CI_DIR/extensions.load" << EOF
+# Create extensions.load file
+cat > "$CI_DIR/extensions.load" << EOF
 $EXTENSIONS_DIR/logger-file.ext
 $EXTENSIONS_DIR/config-static.ext
 EOF
 
-    echo "Extensions configured:"
-    cat "$CI_DIR/extensions.load"
+echo "Extensions configured:"
+cat "$CI_DIR/extensions.load"
 
-    echo "Starting osqueryd..."
-    # Start osqueryd with extension autoloading
-    # Key flags:
-    # --ephemeral: Don't persist RocksDB data
-    # --disable_watchdog: Don't restart crashed extensions
-    # --extensions_timeout: Wait longer for extensions to register
-    # --extensions_interval: Check for extensions more frequently
-    # --force: Run without root privileges
-    osqueryd \
-        --ephemeral \
-        --force \
-        --disable_watchdog \
-        --disable_extensions=false \
-        --extensions_socket="$SOCKET_PATH" \
-        --extensions_autoload="$CI_DIR/extensions.load" \
-        --extensions_timeout=30 \
-        --extensions_interval=1 \
-        --database_path="$DB_PATH" \
-        --config_plugin=static_config \
-        --logger_plugin=file_logger \
-        --verbose \
-        2>&1 | tee "$CI_DIR/osqueryd.log" &
-    OSQUERY_PID=$!
+echo "Starting osqueryd..."
+# Start osqueryd with extension autoloading
+$OSQUERYD_PATH \
+    --ephemeral \
+    --force \
+    --disable_watchdog \
+    --disable_extensions=false \
+    --extensions_socket="$SOCKET_PATH" \
+    --extensions_autoload="$CI_DIR/extensions.load" \
+    --extensions_timeout=30 \
+    --extensions_interval=1 \
+    --database_path="$DB_PATH" \
+    --config_plugin=static_config \
+    --logger_plugin=file_logger \
+    --verbose \
+    2>&1 | tee "$CI_DIR/osqueryd.log" &
+OSQUERY_PID=$!
 
-    echo "osqueryd PID: $OSQUERY_PID"
+echo "osqueryd PID: $OSQUERY_PID"
 
-    # Wait for socket with timeout
-    echo "Waiting for osquery socket..."
-    for i in {1..30}; do
-        if [ -S "$SOCKET_PATH" ]; then
-            echo "Socket ready at $SOCKET_PATH"
-            break
-        fi
-        if [ "$i" -eq 30 ]; then
-            echo "ERROR: Socket not ready after 30s"
-            echo "osqueryd log:"
-            cat "$CI_DIR/osqueryd.log"
-            exit 1
-        fi
-        sleep 1
-    done
+# Wait for socket with timeout
+echo "Waiting for osquery socket..."
+for i in {1..30}; do
+    if [ -S "$SOCKET_PATH" ]; then
+        echo "Socket ready at $SOCKET_PATH"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "ERROR: Socket not ready after 30s"
+        echo "osqueryd log:"
+        cat "$CI_DIR/osqueryd.log"
+        exit 1
+    fi
+    sleep 1
+done
 
-    # Wait for extensions to register
-    echo "Waiting for extensions to register..."
-    for i in {1..30}; do
-        # Check if both extensions are registered
-        EXTENSIONS=$(osqueryi --socket "$SOCKET_PATH" --json \
-            "SELECT name FROM osquery_extensions WHERE name IN ('file_logger', 'static_config')" 2>/dev/null || echo "[]")
+# Wait for extensions to register
+echo "Waiting for extensions to register..."
+for i in {1..30}; do
+    # Check if both extensions are registered
+    EXTENSIONS=$(osqueryi --socket "$SOCKET_PATH" --json \
+        "SELECT name FROM osquery_extensions WHERE name IN ('file_logger', 'static_config')" 2>/dev/null || echo "[]")
 
-        LOGGER_READY=$(echo "$EXTENSIONS" | grep -c "file_logger" || true)
-        CONFIG_READY=$(echo "$EXTENSIONS" | grep -c "static_config" || true)
+    LOGGER_READY=$(echo "$EXTENSIONS" | grep -c "file_logger" || true)
+    CONFIG_READY=$(echo "$EXTENSIONS" | grep -c "static_config" || true)
 
-        if [ "$LOGGER_READY" -ge 1 ] && [ "$CONFIG_READY" -ge 1 ]; then
-            echo "Extensions registered successfully"
-            break
-        fi
+    if [ "$LOGGER_READY" -ge 1 ] && [ "$CONFIG_READY" -ge 1 ]; then
+        echo "Extensions registered successfully"
+        break
+    fi
 
-        if [ "$i" -eq 30 ]; then
-            echo "ERROR: Extensions not registered after 30s"
-            echo "Registered extensions:"
-            osqueryi --socket "$SOCKET_PATH" "SELECT * FROM osquery_extensions" 2>/dev/null || true
-            echo "osqueryd log:"
-            cat "$CI_DIR/osqueryd.log"
-            exit 1
-        fi
-        sleep 1
-    done
+    if [ "$i" -eq 30 ]; then
+        echo "ERROR: Extensions not registered after 30s"
+        echo "Registered extensions:"
+        osqueryi --socket "$SOCKET_PATH" "SELECT * FROM osquery_extensions" 2>/dev/null || true
+        echo "osqueryd log:"
+        cat "$CI_DIR/osqueryd.log"
+        exit 1
+    fi
+    sleep 1
+done
 
-    # Wait for first scheduled query to run (generates snapshots)
-    echo "Waiting for first scheduled query..."
-    for i in {1..15}; do
-        if [ -f "$LOGGER_FILE" ] && grep -q "SNAPSHOT" "$LOGGER_FILE" 2>/dev/null; then
-            echo "First snapshot logged"
-            break
-        fi
-        if [ "$i" -eq 15 ]; then
-            echo "Warning: No snapshot after 15s, continuing anyway"
-        fi
-        sleep 1
-    done
+# Wait for first scheduled query to run (generates snapshots)
+echo "Waiting for first scheduled query..."
+for i in {1..15}; do
+    if [ -f "$LOGGER_FILE" ] && grep -q "SNAPSHOT" "$LOGGER_FILE" 2>/dev/null; then
+        echo "First snapshot logged"
+        break
+    fi
+    if [ "$i" -eq 15 ]; then
+        echo "Warning: No snapshot after 15s, continuing anyway"
+    fi
+    sleep 1
+done
 
-    # Show what was logged
-    echo "Logger file contents:"
-    cat "$LOGGER_FILE" 2>/dev/null || echo "(empty)"
+# Show what was logged
+echo "Logger file contents:"
+cat "$LOGGER_FILE" 2>/dev/null || echo "(empty)"
 
-    echo "Config marker contents:"
-    cat "$CONFIG_MARKER" 2>/dev/null || echo "(empty)"
+echo "Config marker contents:"
+cat "$CONFIG_MARKER" 2>/dev/null || echo "(empty)"
 
-    # Export for tests
-    export OSQUERY_SOCKET="$SOCKET_PATH"
-    export TEST_LOGGER_FILE="$LOGGER_FILE"
-    export TEST_CONFIG_MARKER_FILE="$CONFIG_MARKER"
-
-else
-    # ========== SIMPLE OSQUERYI MODE (limited tests) ==========
-    echo "Using osqueryi (limited mode - autoload tests will fail)"
-
-    # Start osqueryi in background
-    (while true; do sleep 60; done | osqueryi \
-        --nodisable_extensions \
-        --extensions_socket="$SOCKET_PATH" 2>/dev/null) &
-    OSQUERY_PID=$!
-
-    echo "osqueryi PID: $OSQUERY_PID"
-
-    # Wait for socket with timeout
-    echo "Waiting for osquery socket..."
-    for i in {1..30}; do
-        if [ -S "$SOCKET_PATH" ]; then
-            echo "Socket ready at $SOCKET_PATH"
-            break
-        fi
-        if [ "$i" -eq 30 ]; then
-            echo "ERROR: Socket not ready after 30s"
-            exit 1
-        fi
-        sleep 1
-    done
-
-    # Export only socket - autoload env vars NOT set (tests will panic)
-    export OSQUERY_SOCKET="$SOCKET_PATH"
-    echo ""
-    echo "NOTE: Running in osqueryi mode - autoload-dependent tests will fail."
-    echo "Install osqueryd for full test coverage."
-fi
+# Export for tests
+export OSQUERY_SOCKET="$SOCKET_PATH"
+export TEST_LOGGER_FILE="$LOGGER_FILE"
+export TEST_CONFIG_MARKER_FILE="$CONFIG_MARKER"
 
 echo ""
 echo "=== Running tests ==="
 echo "OSQUERY_SOCKET=$OSQUERY_SOCKET"
-echo "TEST_LOGGER_FILE=${TEST_LOGGER_FILE:-<not set>}"
-echo "TEST_CONFIG_MARKER_FILE=${TEST_CONFIG_MARKER_FILE:-<not set>}"
+echo "TEST_LOGGER_FILE=$TEST_LOGGER_FILE"
+echo "TEST_CONFIG_MARKER_FILE=$TEST_CONFIG_MARKER_FILE"
 echo ""
 
 cd "$PROJECT_ROOT"

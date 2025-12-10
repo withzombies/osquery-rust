@@ -39,11 +39,15 @@ RUN cargo build --release -p two-tables -p writeable-table -p config-static -p l
 # Start from rust:latest to keep toolchain, then add osquery
 FROM rust:latest
 
+# Install cargo-llvm-cov for coverage measurement
+RUN rustup component add llvm-tools-preview && \
+    cargo install cargo-llvm-cov
+
 # Install osquery from GitHub releases (supports both amd64 and arm64)
 ARG OSQUERY_VERSION=5.20.0
 ARG TARGETARCH
 
-RUN apt-get update && apt-get install -y curl ca-certificates && \
+RUN apt-get update && apt-get install -y curl ca-certificates bc && \
     # Map Docker arch to osquery arch naming
     OSQUERY_ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
     curl -L "https://github.com/osquery/osquery/releases/download/${OSQUERY_VERSION}/osquery-${OSQUERY_VERSION}_1.linux_${OSQUERY_ARCH}.tar.gz" \
