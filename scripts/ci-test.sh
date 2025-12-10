@@ -169,14 +169,11 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Wait for extensions
+# Wait for extensions (check osqueryd log for registration messages)
 echo "Waiting for extensions..."
 for i in {1..30}; do
-    EXTENSIONS=$(osqueryi --socket "$SOCKET_PATH" --json \
-        "SELECT name FROM osquery_extensions WHERE name IN ('"'"'file_logger'"'"', '"'"'static_config'"'"')" 2>/dev/null || echo "[]")
-
-    LOGGER_READY=$(echo "$EXTENSIONS" | grep -c "file_logger" || true)
-    CONFIG_READY=$(echo "$EXTENSIONS" | grep -c "static_config" || true)
+    LOGGER_READY=$(grep -c "registered logger plugin file_logger" "$CI_DIR/osqueryd.log" 2>/dev/null || echo 0)
+    CONFIG_READY=$(grep -c "registered config plugin static_config" "$CI_DIR/osqueryd.log" 2>/dev/null || echo 0)
 
     if [ "$LOGGER_READY" -ge 1 ] && [ "$CONFIG_READY" -ge 1 ]; then
         echo "Extensions registered"
@@ -185,7 +182,6 @@ for i in {1..30}; do
 
     if [ "$i" -eq 30 ]; then
         echo "ERROR: Extensions not registered"
-        osqueryi --socket "$SOCKET_PATH" "SELECT * FROM osquery_extensions" 2>/dev/null || true
         cat "$CI_DIR/osqueryd.log"
         exit 1
     fi
@@ -359,15 +355,12 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Wait for extensions to register
+# Wait for extensions to register (check osqueryd log for registration messages)
 echo "Waiting for extensions to register..."
 for i in {1..30}; do
-    # Check if both extensions are registered
-    EXTENSIONS=$(osqueryi --socket "$SOCKET_PATH" --json \
-        "SELECT name FROM osquery_extensions WHERE name IN ('file_logger', 'static_config')" 2>/dev/null || echo "[]")
-
-    LOGGER_READY=$(echo "$EXTENSIONS" | grep -c "file_logger" || true)
-    CONFIG_READY=$(echo "$EXTENSIONS" | grep -c "static_config" || true)
+    # Check osqueryd log for extension registration messages
+    LOGGER_READY=$(grep -c "registered logger plugin file_logger" "$CI_DIR/osqueryd.log" 2>/dev/null || echo 0)
+    CONFIG_READY=$(grep -c "registered config plugin static_config" "$CI_DIR/osqueryd.log" 2>/dev/null || echo 0)
 
     if [ "$LOGGER_READY" -ge 1 ] && [ "$CONFIG_READY" -ge 1 ]; then
         echo "Extensions registered successfully"
@@ -376,8 +369,6 @@ for i in {1..30}; do
 
     if [ "$i" -eq 30 ]; then
         echo "ERROR: Extensions not registered after 30s"
-        echo "Registered extensions:"
-        osqueryi --socket "$SOCKET_PATH" "SELECT * FROM osquery_extensions" 2>/dev/null || true
         echo "osqueryd log:"
         cat "$CI_DIR/osqueryd.log"
         exit 1
