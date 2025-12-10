@@ -81,7 +81,8 @@ jobs:
 
           # Start osqueryd
           # --allow_unsafe is needed for CI where target/debug/ has non-root ownership
-          sudo osqueryd --ephemeral \
+          # -E preserves environment variables so extensions can access TEST_LOGGER_FILE
+          sudo -E osqueryd --ephemeral \
             --disable_extensions=false \
             --extensions_socket=/var/osquery/osquery.em \
             --extensions_autoload=/etc/osquery/extensions.load \
