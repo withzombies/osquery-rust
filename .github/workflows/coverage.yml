@@ -27,48 +27,24 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Start osquery container
-        run: |
-          mkdir -p /tmp/osquery
-          docker run -d --name osquery \
-            -v /tmp/osquery:/var/osquery \
-            osquery/osquery:5.17.0-ubuntu22.04 \
-            osqueryd --ephemeral --disable_extensions=false \
-            --extensions_socket=/var/osquery/osquery.em
-
-          # Wait for socket (30s timeout, 1s poll)
-          for i in {1..30}; do
-            [ -S /tmp/osquery/osquery.em ] && echo 'Socket ready' && break
-            sleep 1
-          done
-
-          # Verify socket exists
-          if [ ! -S /tmp/osquery/osquery.em ]; then
-            echo 'ERROR: osquery socket not found'
-            docker logs osquery
-            exit 1
-          fi
+      - name: Build test Docker image
+        run: ./scripts/build-test-image.sh
 
       - name: Generate coverage report
-        env:
-          OSQUERY_SOCKET: /tmp/osquery/osquery.em
         run: |
-          # Exclude auto-generated Thrift code from coverage
+          # Run coverage with Docker tests enabled (uses testcontainers)
+          # This exercises real osquery I/O paths in client.rs and server.rs
           cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --ignore-filename-regex "_osquery"
+        timeout-minutes: 15
 
       - name: Calculate coverage percentage
         id: coverage
-        env:
-          OSQUERY_SOCKET: /tmp/osquery/osquery.em
         run: |
           # Get coverage percentage from cargo-llvm-cov (excluding auto-generated code)
           COVERAGE=$(cargo llvm-cov --all-features --workspace --json --ignore-filename-regex "_osquery" 2>/dev/null | jq -r '.data[0].totals.lines.percent // 0' | xargs printf "%.1f")
           echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
           echo "Coverage: $COVERAGE%"
-
-      - name: Stop osquery container
-        if: always()
-        run: docker stop osquery || true
+        timeout-minutes: 15
 
       - name: Update coverage badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
