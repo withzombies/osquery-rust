@@ -236,11 +236,15 @@ exit $RESULT
 
     # Copy coverage output if generated
     if [ "$COVERAGE" = true ] && [ -f "$PROJECT_ROOT/lcov.info" ]; then
-        # Calculate coverage percentage
+        # Calculate coverage percentage (cross-platform: use awk instead of paste)
         if [ -f "$PROJECT_ROOT/lcov.info" ]; then
-            LINES_HIT=$(grep -E "^LH:" "$PROJECT_ROOT/lcov.info" | cut -d: -f2 | paste -sd+ | bc 2>/dev/null || echo 0)
-            LINES_FOUND=$(grep -E "^LF:" "$PROJECT_ROOT/lcov.info" | cut -d: -f2 | paste -sd+ | bc 2>/dev/null || echo 1)
-            COVERAGE_PCT=$(echo "scale=1; $LINES_HIT * 100 / $LINES_FOUND" | bc 2>/dev/null || echo "0")
+            LINES_HIT=$(grep -E "^LH:" "$PROJECT_ROOT/lcov.info" | cut -d: -f2 | awk '{sum+=$1} END {print sum}' 2>/dev/null || echo 0)
+            LINES_FOUND=$(grep -E "^LF:" "$PROJECT_ROOT/lcov.info" | cut -d: -f2 | awk '{sum+=$1} END {print sum}' 2>/dev/null || echo 1)
+            if [ -n "$LINES_HIT" ] && [ -n "$LINES_FOUND" ] && [ "$LINES_FOUND" -gt 0 ]; then
+                COVERAGE_PCT=$(awk "BEGIN {printf \"%.1f\", $LINES_HIT * 100 / $LINES_FOUND}")
+            else
+                COVERAGE_PCT="0"
+            fi
             echo "Coverage: $COVERAGE_PCT%"
             echo "coverage=$COVERAGE_PCT" >> "${GITHUB_OUTPUT:-/dev/null}"
         fi
@@ -417,11 +421,15 @@ if [ "$COVERAGE" = true ]; then
         cargo llvm-cov --all-features --workspace --lcov \
             --output-path lcov.info --ignore-filename-regex "_osquery"
 
-        # Calculate and display coverage
+        # Calculate and display coverage (cross-platform: use awk instead of paste/bc)
         if [ -f lcov.info ]; then
-            LINES_HIT=$(grep -E "^LH:" lcov.info | cut -d: -f2 | paste -sd+ | bc || echo 0)
-            LINES_FOUND=$(grep -E "^LF:" lcov.info | cut -d: -f2 | paste -sd+ | bc || echo 1)
-            COVERAGE_PCT=$(echo "scale=1; $LINES_HIT * 100 / $LINES_FOUND" | bc)
+            LINES_HIT=$(grep -E "^LH:" lcov.info | cut -d: -f2 | awk '{sum+=$1} END {print sum}')
+            LINES_FOUND=$(grep -E "^LF:" lcov.info | cut -d: -f2 | awk '{sum+=$1} END {print sum}')
+            if [ -n "$LINES_HIT" ] && [ -n "$LINES_FOUND" ] && [ "$LINES_FOUND" -gt 0 ]; then
+                COVERAGE_PCT=$(awk "BEGIN {printf \"%.1f\", $LINES_HIT * 100 / $LINES_FOUND}")
+            else
+                COVERAGE_PCT="0"
+            fi
             echo "Coverage: $COVERAGE_PCT%"
             # Output for GitHub Actions
             echo "coverage=$COVERAGE_PCT" >> "${GITHUB_OUTPUT:-/dev/null}"
