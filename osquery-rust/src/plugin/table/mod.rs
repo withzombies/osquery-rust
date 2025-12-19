@@ -16,7 +16,7 @@ pub mod results;
 pub mod request_handler;
 
 // Re-export public items
-pub use column_def::{ColumnDef, ColumnType};
+pub use column_def::ColumnType;
 #[allow(unused_imports)]
 pub use query_constraint::QueryConstraints;
 pub use table_plugin::TablePlugin;
