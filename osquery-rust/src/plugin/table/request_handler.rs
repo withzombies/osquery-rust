@@ -196,8 +196,8 @@ mod tests {
         }
 
         fn update(&mut self, id: String, json: Value) -> UpdateResult {
-            if self.data.contains_key(&id) {
-                self.data.insert(id, json);
+            if let std::collections::hash_map::Entry::Occupied(mut e) = self.data.entry(id) {
+                e.insert(json);
                 UpdateResult::Ok
             } else {
                 UpdateResult::NotFound

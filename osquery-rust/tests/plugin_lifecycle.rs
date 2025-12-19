@@ -78,32 +78,28 @@ fn spawn_mock_osquery(socket_path: &std::path::Path) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let listener = UnixListener::bind(&socket_path).expect("Failed to bind mock osquery");
 
-        for stream in listener.incoming() {
-            match stream {
-                Ok(mut stream) => {
-                    // Read the request
-                    let mut buffer = vec![0; 4096];
-                    if stream.read(&mut buffer).is_ok() {
-                        // Send a minimal success response for any request
-                        // This is a simplified Thrift binary protocol response
-                        let response = [
-                            0x00, 0x00, 0x00, 0x10, // frame length
-                            0x80, 0x01, 0x00, 0x02, // binary protocol + message type (reply)
-                            0x00, 0x00, 0x00, 0x00, // method name length (0)
-                            0x00, 0x00, 0x00, 0x00, // sequence id
-                            0x0C, // struct start
-                            0x08, 0x00, 0x01, // field type (i32) + field id (1)
-                            0x00, 0x00, 0x00, 0x00, // code = 0 (success)
-                            0x00, // struct end
-                        ];
-                        let _ = stream.write_all(&response);
-                    }
+        let mut stream = listener
+            .incoming()
+            .next()
+            .expect("No incoming connection")
+            .expect("Failed to accept connection");
 
-                    // Break after first connection to avoid hanging
-                    break;
-                }
-                Err(_) => break,
-            }
+        // Read the request
+        let mut buffer = vec![0; 4096];
+        if stream.read(&mut buffer).is_ok() {
+            // Send a minimal success response for any request
+            // This is a simplified Thrift binary protocol response
+            let response = [
+                0x00, 0x00, 0x00, 0x10, // frame length
+                0x80, 0x01, 0x00, 0x02, // binary protocol + message type (reply)
+                0x00, 0x00, 0x00, 0x00, // method name length (0)
+                0x00, 0x00, 0x00, 0x00, // sequence id
+                0x0C, // struct start
+                0x08, 0x00, 0x01, // field type (i32) + field id (1)
+                0x00, 0x00, 0x00, 0x00, // code = 0 (success)
+                0x00, // struct end
+            ];
+            let _ = stream.write_all(&response);
         }
     })
 }
