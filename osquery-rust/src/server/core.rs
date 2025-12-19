@@ -276,6 +276,9 @@ impl<P: OsqueryPlugin + Clone + Send + 'static, C: OsqueryClient> Server<P, C> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::indexing_slicing)]
+
     use super::*;
     use crate::client::MockOsqueryClient;
     use crate::plugin::{Plugin, TablePlugin};

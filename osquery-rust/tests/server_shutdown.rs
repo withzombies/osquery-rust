@@ -3,6 +3,9 @@
 //! These tests verify that the server can gracefully shutdown when requested,
 //! rather than blocking forever in listen_uds().
 
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+
 use osquery_rust_ng::{plugin::Plugin, Server};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixListener;

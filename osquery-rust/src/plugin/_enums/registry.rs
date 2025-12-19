@@ -22,6 +22,7 @@ impl fmt::Display for Registry {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use super::*;
     use std::str::FromStr;
 

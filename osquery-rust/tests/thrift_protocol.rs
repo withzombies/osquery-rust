@@ -4,6 +4,9 @@
 //! various edge cases, malformed data, and error conditions that can occur
 //! during real osquery communication.
 
+#![allow(clippy::expect_used)]
+#![allow(clippy::unwrap_used)]
+
 use osquery_rust_ng::{OsqueryClient, ThriftClient};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixListener;

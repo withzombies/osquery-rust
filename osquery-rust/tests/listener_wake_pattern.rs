@@ -3,6 +3,9 @@
 //! These tests verify that Unix socket listeners can be gracefully interrupted
 //! using the wake-up pattern: connecting to the socket to unblock accept() calls.
 
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+
 use std::os::unix::net::UnixListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

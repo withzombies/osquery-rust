@@ -25,6 +25,9 @@ pub trait ReadOnlyTable: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::panic)]
+
     use super::*;
     use crate::_osquery::ExtensionStatus;
     use crate::plugin::table::column_def::{ColumnDef, ColumnOptions, ColumnType};

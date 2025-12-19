@@ -3,6 +3,10 @@
 //! These tests verify the end-to-end functionality of plugins interacting
 //! with a mock osquery environment through the complete request/response cycle.
 
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::panic)]
+#![allow(clippy::expect_used)]
+
 use osquery_rust_ng::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, ReadOnlyTable};
 use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus, Server};
 use std::collections::BTreeMap;
@@ -79,7 +83,7 @@ fn spawn_mock_osquery(socket_path: &std::path::Path) -> thread::JoinHandle<()> {
                 Ok(mut stream) => {
                     // Read the request
                     let mut buffer = vec![0; 4096];
-                    if let Ok(_) = stream.read(&mut buffer) {
+                    if stream.read(&mut buffer).is_ok() {
                         // Send a minimal success response for any request
                         // This is a simplified Thrift binary protocol response
                         let response = [

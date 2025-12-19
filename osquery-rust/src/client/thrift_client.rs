@@ -127,6 +127,7 @@ pub type Client = ThriftClient;
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use super::*;
     use std::io::ErrorKind;
     use std::time::Duration;

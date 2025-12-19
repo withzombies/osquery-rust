@@ -210,6 +210,8 @@ impl<L: LoggerPlugin> OsqueryPlugin for LoggerPluginWrapper<L> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::indexing_slicing)]
     use super::*;
     use crate::plugin::logger::logger_features::LoggerFeatures;
     use crate::plugin::logger::logger_plugin::LoggerPlugin;

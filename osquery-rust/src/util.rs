@@ -22,6 +22,8 @@ impl<T> OptionToThriftResult<T> for Option<T> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::panic)]
     use super::*;
 
     #[test]

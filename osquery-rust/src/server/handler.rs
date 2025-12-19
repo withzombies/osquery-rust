@@ -144,6 +144,7 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionManagerSyncHandler for Handler<
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use super::*;
     use crate::_osquery::osquery::{ExtensionManagerSyncHandler, ExtensionSyncHandler};
     use crate::plugin::TablePlugin;

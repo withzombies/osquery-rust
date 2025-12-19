@@ -35,6 +35,7 @@ impl TryFrom<i64> for LogSeverity {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -65,6 +66,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::clone_on_copy)]
     fn test_log_severity_clone() {
         let severity = LogSeverity::Warning;
         let cloned = severity.clone();
