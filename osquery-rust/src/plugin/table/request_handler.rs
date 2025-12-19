@@ -248,7 +248,12 @@ mod tests {
         let response = plugin.parse_request(request);
         let status = response.status.as_ref().unwrap();
         assert_eq!(status.code, Some(1));
-        assert!(status.message.as_ref().unwrap().contains("read-only"));
+        
+        // Check that the readonly status is in the response data
+        let rows = response.response.as_ref().unwrap();
+        assert!(!rows.is_empty());
+        let first_row = &rows[0];
+        assert_eq!(first_row.get("status"), Some(&"readonly".to_string()));
     }
 
     #[test]

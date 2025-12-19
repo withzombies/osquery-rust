@@ -34,7 +34,11 @@ impl<P: OsqueryPlugin + Clone> Handler<P> {
 
 impl<P: OsqueryPlugin + Clone> osquery::ExtensionSyncHandler for Handler<P> {
     fn handle_ping(&self) -> thrift::Result<osquery::ExtensionStatus> {
-        Ok(osquery::ExtensionStatus::default())
+        Ok(osquery::ExtensionStatus {
+            code: Some(0),
+            message: Some("OK".to_string()),
+            uuid: None,
+        })
     }
 
     fn handle_call(
