@@ -62,12 +62,12 @@ mod tests {
     #[test]
     fn test_registry_hash() {
         use std::collections::HashMap;
-        
+
         let mut map = HashMap::new();
         map.insert(Registry::Config, "config_value");
         map.insert(Registry::Logger, "logger_value");
         map.insert(Registry::Table, "table_value");
-        
+
         assert_eq!(map.get(&Registry::Config), Some(&"config_value"));
         assert_eq!(map.get(&Registry::Logger), Some(&"logger_value"));
         assert_eq!(map.get(&Registry::Table), Some(&"table_value"));

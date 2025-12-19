@@ -39,73 +39,81 @@ mod tests {
     #[test]
     fn test_osquery_client_trait_methods() {
         let mut mock_client = MockOsqueryClient::new();
-        
+
         let test_info = InternalExtensionInfo {
             name: Some("test_extension".to_string()),
             version: Some("1.0.0".to_string()),
             sdk_version: Some("5.0.0".to_string()),
             min_sdk_version: Some("5.0.0".to_string()),
         };
-        
+
         let test_registry = ExtensionRegistry::new();
-        let test_status = ExtensionStatus { 
-            code: Some(0), 
-            message: Some("OK".to_string()), 
-            uuid: Some(123) 
+        let test_status = ExtensionStatus {
+            code: Some(0),
+            message: Some("OK".to_string()),
+            uuid: Some(123),
         };
-        let test_response = ExtensionResponse { 
-            status: Some(test_status.clone()), 
-            response: Some(Vec::new()) 
+        let test_response = ExtensionResponse {
+            status: Some(test_status.clone()),
+            response: Some(Vec::new()),
         };
-        
-        mock_client.expect_register_extension()
+
+        mock_client
+            .expect_register_extension()
             .times(1)
             .returning(move |_, _| Ok(test_status.clone()));
-        
-        mock_client.expect_deregister_extension()
+
+        mock_client
+            .expect_deregister_extension()
             .times(1)
-            .returning(move |_| Ok(ExtensionStatus { 
-                code: Some(0), 
-                message: Some("OK".to_string()), 
-                uuid: Some(123) 
-            }));
-        
-        mock_client.expect_ping()
-            .times(1)
-            .returning(|| Ok(ExtensionStatus { 
-                code: Some(0), 
-                message: Some("OK".to_string()), 
-                uuid: Some(123) 
-            }));
-        
-        mock_client.expect_query()
+            .returning(move |_| {
+                Ok(ExtensionStatus {
+                    code: Some(0),
+                    message: Some("OK".to_string()),
+                    uuid: Some(123),
+                })
+            });
+
+        mock_client.expect_ping().times(1).returning(|| {
+            Ok(ExtensionStatus {
+                code: Some(0),
+                message: Some("OK".to_string()),
+                uuid: Some(123),
+            })
+        });
+
+        mock_client
+            .expect_query()
             .times(1)
             .returning(move |_| Ok(test_response.clone()));
-        
-        mock_client.expect_get_query_columns()
+
+        mock_client
+            .expect_get_query_columns()
             .times(1)
-            .returning(move |_| Ok(ExtensionResponse { 
-                status: Some(ExtensionStatus { 
-                    code: Some(0), 
-                    message: Some("OK".to_string()), 
-                    uuid: Some(123) 
-                }), 
-                response: Some(Vec::new()) 
-            }));
-        
+            .returning(move |_| {
+                Ok(ExtensionResponse {
+                    status: Some(ExtensionStatus {
+                        code: Some(0),
+                        message: Some("OK".to_string()),
+                        uuid: Some(123),
+                    }),
+                    response: Some(Vec::new()),
+                })
+            });
+
         let result = mock_client.register_extension(test_info, test_registry);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().code, Some(0));
-        
+
         let result = mock_client.deregister_extension(123);
         assert!(result.is_ok());
-        
+
         let result = mock_client.ping();
         assert!(result.is_ok());
-        
+
         let result = mock_client.query("SELECT 1".to_string());
         assert!(result.is_ok());
-        
+
         let result = mock_client.get_query_columns("SELECT 1".to_string());
         assert!(result.is_ok());
     }

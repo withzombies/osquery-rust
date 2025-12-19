@@ -145,7 +145,7 @@ impl<P: OsqueryPlugin + Clone> osquery::ExtensionManagerSyncHandler for Handler<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::_osquery::osquery::{ExtensionSyncHandler, ExtensionManagerSyncHandler};
+    use crate::_osquery::osquery::{ExtensionManagerSyncHandler, ExtensionSyncHandler};
     use crate::plugin::TablePlugin;
 
     struct TestTable;
@@ -157,9 +157,9 @@ mod tests {
 
         fn columns(&self) -> Vec<crate::plugin::ColumnDef> {
             vec![crate::plugin::ColumnDef::new(
-                "test_column", 
+                "test_column",
                 crate::plugin::ColumnType::Text,
-                crate::plugin::ColumnOptions::empty()
+                crate::plugin::ColumnOptions::empty(),
             )]
         }
 
@@ -173,12 +173,10 @@ mod tests {
     #[test]
     fn test_handler_new() {
         use crate::plugin::Plugin;
-        
-        let plugins = vec![
-            Plugin::Table(TablePlugin::from_readonly_table(TestTable))
-        ];
+
+        let plugins = vec![Plugin::Table(TablePlugin::from_readonly_table(TestTable))];
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        
+
         let handler_result = Handler::new(&plugins, shutdown_flag);
         assert!(handler_result.is_ok());
     }
@@ -187,11 +185,11 @@ mod tests {
     fn test_handler_ping() {
         let plugins: Vec<crate::plugin::Plugin> = vec![];
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        
+
         let handler = Handler::new(&plugins, shutdown_flag).unwrap();
         let result = handler.handle_ping();
         assert!(result.is_ok());
-        
+
         let status = result.unwrap();
         assert_eq!(status.code, Some(0));
         assert_eq!(status.message, Some("OK".to_string()));
@@ -201,13 +199,13 @@ mod tests {
     fn test_handler_shutdown() {
         let plugins: Vec<crate::plugin::Plugin> = vec![];
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        
+
         let handler = Handler::new(&plugins, shutdown_flag.clone()).unwrap();
         assert!(!shutdown_flag.load(Ordering::Acquire));
-        
+
         let result = handler.handle_shutdown();
         assert!(result.is_ok());
-        
+
         assert!(shutdown_flag.load(Ordering::Acquire));
     }
 
@@ -215,11 +213,11 @@ mod tests {
     fn test_handler_extensions() {
         let plugins: Vec<crate::plugin::Plugin> = vec![];
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        
+
         let handler = Handler::new(&plugins, shutdown_flag).unwrap();
         let result = handler.handle_extensions();
         assert!(result.is_ok());
-        
+
         let extensions = result.unwrap();
         assert!(extensions.is_empty());
     }
@@ -228,11 +226,11 @@ mod tests {
     fn test_handler_options() {
         let plugins: Vec<crate::plugin::Plugin> = vec![];
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        
+
         let handler = Handler::new(&plugins, shutdown_flag).unwrap();
         let result = handler.handle_options();
         assert!(result.is_ok());
-        
+
         let options = result.unwrap();
         assert!(options.is_empty());
     }
@@ -241,27 +239,41 @@ mod tests {
     fn test_handler_query_not_implemented() {
         let plugins: Vec<crate::plugin::Plugin> = vec![];
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        
+
         let handler = Handler::new(&plugins, shutdown_flag).unwrap();
         let result = handler.handle_query("SELECT 1".to_string());
         assert!(result.is_ok());
-        
+
         let response = result.unwrap();
         assert_eq!(response.status.as_ref().unwrap().code, Some(1));
-        assert!(response.status.as_ref().unwrap().message.as_ref().unwrap().contains("not implemented"));
+        assert!(response
+            .status
+            .as_ref()
+            .unwrap()
+            .message
+            .as_ref()
+            .unwrap()
+            .contains("not implemented"));
     }
 
     #[test]
     fn test_handler_get_query_columns_not_implemented() {
         let plugins: Vec<crate::plugin::Plugin> = vec![];
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        
+
         let handler = Handler::new(&plugins, shutdown_flag).unwrap();
         let result = handler.handle_get_query_columns("SELECT 1".to_string());
         assert!(result.is_ok());
-        
+
         let response = result.unwrap();
         assert_eq!(response.status.as_ref().unwrap().code, Some(1));
-        assert!(response.status.as_ref().unwrap().message.as_ref().unwrap().contains("not implemented"));
+        assert!(response
+            .status
+            .as_ref()
+            .unwrap()
+            .message
+            .as_ref()
+            .unwrap()
+            .contains("not implemented"));
     }
 }

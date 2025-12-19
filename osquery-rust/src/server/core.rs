@@ -121,11 +121,11 @@ impl<P: OsqueryPlugin + Clone + Send + 'static, C: OsqueryClient> Server<P, C> {
     pub fn start(&mut self) -> thrift::Result<()> {
         let registry = self.generate_registry()?;
         let info = self.extension_info();
-        
+
         let status = self.client.register_extension(info, registry)?;
         self.uuid = status.uuid;
         self.started = true;
-        
+
         log::info!("Extension registered with UUID: {:?}", self.uuid);
         Ok(())
     }
@@ -146,20 +146,20 @@ impl<P: OsqueryPlugin + Clone + Send + 'static, C: OsqueryClient> Server<P, C> {
     fn generate_registry(&self) -> thrift::Result<osquery::ExtensionRegistry> {
         use std::collections::BTreeMap;
         let mut registry = BTreeMap::new();
-        
+
         // Group plugins by registry type (table, config, logger)
         for plugin in &self.plugins {
             let registry_name = plugin.registry().to_string();
             let plugin_name = plugin.name();
             let routes = plugin.routes();
-            
+
             // Get or create the route table for this registry type
             let route_table = registry.entry(registry_name).or_insert_with(BTreeMap::new);
-            
+
             // Add this plugin's routes to the registry
             route_table.insert(plugin_name, routes);
         }
-        
+
         Ok(registry)
     }
 
@@ -186,15 +186,15 @@ impl<P: OsqueryPlugin + Clone + Send + 'static, C: OsqueryClient> Server<P, C> {
     /// Shutdown and cleanup resources
     fn shutdown_and_cleanup(&mut self) {
         log::info!("Shutting down");
-        
+
         self.join_listener_thread();
-        
+
         if let Some(uuid) = self.uuid {
             if let Err(e) = self.client.deregister_extension(uuid) {
                 log::warn!("Failed to deregister from osquery: {e}");
             }
         }
-        
+
         self.notify_plugins_shutdown();
         self.cleanup_socket();
     }
@@ -203,7 +203,7 @@ impl<P: OsqueryPlugin + Clone + Send + 'static, C: OsqueryClient> Server<P, C> {
     fn join_listener_thread(&mut self) {
         const JOIN_TIMEOUT: Duration = Duration::from_millis(100);
         const POLL_INTERVAL: Duration = Duration::from_millis(10);
-        
+
         let Some(thread) = self.listener_thread.take() else {
             return;
         };
@@ -289,9 +289,9 @@ mod tests {
 
         fn columns(&self) -> Vec<crate::plugin::ColumnDef> {
             vec![crate::plugin::ColumnDef::new(
-                "test_column", 
+                "test_column",
                 crate::plugin::ColumnType::Text,
-                crate::plugin::ColumnOptions::empty()
+                crate::plugin::ColumnOptions::empty(),
             )]
         }
 
@@ -311,9 +311,9 @@ mod tests {
 
         fn columns(&self) -> Vec<crate::plugin::ColumnDef> {
             vec![crate::plugin::ColumnDef::new(
-                "test_column_2", 
+                "test_column_2",
                 crate::plugin::ColumnType::Integer,
-                crate::plugin::ColumnOptions::empty()
+                crate::plugin::ColumnOptions::empty(),
             )]
         }
 
@@ -373,20 +373,20 @@ mod tests {
         server.register_plugin(plugin);
 
         let registry = server.generate_registry().unwrap();
-        
+
         // Should have one registry type (table)
         assert_eq!(registry.len(), 1);
         assert!(registry.contains_key("table"));
-        
+
         // Should have one plugin in the table registry
         let table_registry = registry.get("table").unwrap();
         assert_eq!(table_registry.len(), 1);
         assert!(table_registry.contains_key("test_table"));
-        
+
         // The routes should contain column information
         let routes = table_registry.get("test_table").unwrap();
         assert_eq!(routes.len(), 1); // One column
-        
+
         // Check the column definition structure
         let column = &routes[0];
         assert_eq!(column.get("id"), Some(&"column".to_string()));
@@ -405,11 +405,11 @@ mod tests {
         server.register_plugin(Plugin::Table(TablePlugin::from_readonly_table(TestTable2)));
 
         let registry = server.generate_registry().unwrap();
-        
+
         // Should have one registry type (table)
         assert_eq!(registry.len(), 1);
         assert!(registry.contains_key("table"));
-        
+
         // Should have two plugins in the table registry
         let table_registry = registry.get("table").unwrap();
         assert_eq!(table_registry.len(), 2);

@@ -72,7 +72,10 @@ mod tests {
     #[test]
     fn test_update_result_display() {
         assert_eq!(UpdateResult::Ok.to_string(), "Update successful");
-        assert_eq!(UpdateResult::NotFound.to_string(), "Update failed: not found");
+        assert_eq!(
+            UpdateResult::NotFound.to_string(),
+            "Update failed: not found"
+        );
         assert_eq!(
             UpdateResult::Error("constraint violation".to_string()).to_string(),
             "Update error: constraint violation"
@@ -82,7 +85,10 @@ mod tests {
     #[test]
     fn test_delete_result_display() {
         assert_eq!(DeleteResult::Ok.to_string(), "Delete successful");
-        assert_eq!(DeleteResult::NotFound.to_string(), "Delete failed: not found");
+        assert_eq!(
+            DeleteResult::NotFound.to_string(),
+            "Delete failed: not found"
+        );
         assert_eq!(
             DeleteResult::Error("foreign key constraint".to_string()).to_string(),
             "Delete error: foreign key constraint"
@@ -91,12 +97,18 @@ mod tests {
 
     #[test]
     fn test_result_equality() {
-        assert_eq!(InsertResult::Ok("1".to_string()), InsertResult::Ok("1".to_string()));
-        assert_ne!(InsertResult::Ok("1".to_string()), InsertResult::Ok("2".to_string()));
-        
+        assert_eq!(
+            InsertResult::Ok("1".to_string()),
+            InsertResult::Ok("1".to_string())
+        );
+        assert_ne!(
+            InsertResult::Ok("1".to_string()),
+            InsertResult::Ok("2".to_string())
+        );
+
         assert_eq!(UpdateResult::Ok, UpdateResult::Ok);
         assert_ne!(UpdateResult::Ok, UpdateResult::NotFound);
-        
+
         assert_eq!(DeleteResult::Ok, DeleteResult::Ok);
         assert_ne!(DeleteResult::Ok, DeleteResult::NotFound);
     }

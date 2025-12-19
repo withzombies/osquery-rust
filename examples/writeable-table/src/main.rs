@@ -6,7 +6,6 @@ use log::info;
 use osquery_rust_ng::plugin::{ColumnDef, ColumnOptions, ColumnType, Plugin, Table};
 use osquery_rust_ng::plugin::{DeleteResult, InsertResult, UpdateResult};
 use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus, Server};
-use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io::{Error, ErrorKind};
 
@@ -80,8 +79,8 @@ impl Table for WriteableTable {
             return UpdateResult::Error("Lastname must be a string".to_string());
         };
 
-        if self.items.contains_key(&rowid) {
-            self.items.insert(rowid, (name.to_string(), lastname.to_string()));
+        if let std::collections::btree_map::Entry::Occupied(mut e) = self.items.entry(rowid) {
+            e.insert((name.to_string(), lastname.to_string()));
             UpdateResult::Ok
         } else {
             UpdateResult::NotFound
@@ -118,8 +117,9 @@ impl Table for WriteableTable {
 
         let rowid = self.next_id.to_string();
         self.next_id += 1;
-        
-        self.items.insert(rowid.clone(), (name.to_string(), lastname.to_string()));
+
+        self.items
+            .insert(rowid.clone(), (name.to_string(), lastname.to_string()));
 
         InsertResult::Ok(rowid)
     }

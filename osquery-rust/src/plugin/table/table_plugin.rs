@@ -2,8 +2,8 @@
 use crate::_osquery::{
     ExtensionPluginRequest, ExtensionPluginResponse, ExtensionResponse, ExtensionStatus,
 };
+use crate::plugin::table::traits::{ReadOnlyTable, Table};
 use crate::plugin::{OsqueryPlugin, Registry};
-use crate::plugin::table::traits::{Table, ReadOnlyTable};
 use enum_dispatch::enum_dispatch;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -105,7 +105,11 @@ mod tests {
         }
 
         fn columns(&self) -> Vec<ColumnDef> {
-            vec![ColumnDef::new("test_column", ColumnType::Text, ColumnOptions::empty())]
+            vec![ColumnDef::new(
+                "test_column",
+                ColumnType::Text,
+                ColumnOptions::empty(),
+            )]
         }
 
         fn generate(&self, _request: ExtensionPluginRequest) -> ExtensionResponse {

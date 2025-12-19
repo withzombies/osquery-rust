@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 fn test_listener_wake_pattern() {
     let dir = tempfile::tempdir().expect("failed to create temp dir for test");
     let socket_path = dir.path().join("test.sock");
-    
+
     // Create listener
     let listener = UnixListener::bind(&socket_path).expect("failed to bind test socket");
 

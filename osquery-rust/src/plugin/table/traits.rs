@@ -95,7 +95,11 @@ mod tests {
         }
 
         fn columns(&self) -> Vec<ColumnDef> {
-            vec![ColumnDef::new("test_column", ColumnType::Text, ColumnOptions::empty())]
+            vec![ColumnDef::new(
+                "test_column",
+                ColumnType::Text,
+                ColumnOptions::empty(),
+            )]
         }
 
         fn generate(&self, _request: ExtensionPluginRequest) -> ExtensionResponse {
@@ -109,7 +113,7 @@ mod tests {
     fn test_writeable_table_insert() {
         let mut table = TestWriteableTable::default();
         let json = serde_json::json!({"name": "test"});
-        
+
         match table.insert(json) {
             InsertResult::Ok(id) => assert_eq!(id, "1"),
             _ => panic!("Insert should succeed"),
@@ -120,7 +124,7 @@ mod tests {
     fn test_writeable_table_delete() {
         let mut table = TestWriteableTable::default();
         let json = serde_json::json!({"name": "test"});
-        
+
         if let InsertResult::Ok(id) = table.insert(json) {
             assert_eq!(table.delete(id), DeleteResult::Ok);
         }
@@ -130,7 +134,7 @@ mod tests {
     fn test_writeable_table_update() {
         let mut table = TestWriteableTable::default();
         let json = serde_json::json!({"name": "test"});
-        
+
         if let InsertResult::Ok(id) = table.insert(json) {
             let new_json = serde_json::json!({"name": "updated"});
             assert_eq!(table.update(id, new_json), UpdateResult::Ok);
