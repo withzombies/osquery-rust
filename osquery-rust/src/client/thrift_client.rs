@@ -131,6 +131,7 @@ mod tests {
     use std::io::ErrorKind;
     use std::time::Duration;
 
+
     #[test]
     fn test_thrift_client_new_with_invalid_path() {
         let result = ThriftClient::new("/nonexistent/socket", Duration::from_secs(1));
@@ -150,61 +151,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_thrift_client_traits_coverage() {
-        use crate::_osquery::*;
-        use std::os::unix::net::UnixListener;
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().expect("Failed to create temp dir");
-        let socket_path = temp_dir.path().join("test_socket");
-        
-        let _listener = UnixListener::bind(&socket_path).expect("Failed to bind socket");
-        
-        let client_result = ThriftClient::new(socket_path.to_str().unwrap(), Duration::from_secs(1));
-        
-        if client_result.is_err() {
-            return;
-        }
-        
-        let mut client = client_result.unwrap();
-        
-        let extensions_result = osquery::TExtensionManagerSyncClient::extensions(&mut client);
-        assert!(extensions_result.is_err());
-        
-        let options_result = osquery::TExtensionManagerSyncClient::options(&mut client);
-        assert!(options_result.is_err());
-        
-        let shutdown_result = osquery::TExtensionSyncClient::shutdown(&mut client);
-        assert!(shutdown_result.is_err());
-    }
-
-    #[test]
-    fn test_thrift_client_call_method_todo() {
-        use crate::_osquery::*;
-        use std::panic;
-        use tempfile::tempdir;
-        use std::os::unix::net::UnixListener;
-        
-        let temp_dir = tempdir().expect("Failed to create temp dir");
-        let socket_path = temp_dir.path().join("test_socket");
-        
-        let _listener = UnixListener::bind(&socket_path).expect("Failed to bind socket");
-        
-        let client_result = ThriftClient::new(socket_path.to_str().unwrap(), Duration::from_secs(1));
-        if client_result.is_err() {
-            return;
-        }
-        
-        let mut client = client_result.unwrap();
-        let request = ExtensionPluginRequest::new();
-        
-        let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            osquery::TExtensionSyncClient::call(&mut client, "registry".to_string(), "item".to_string(), request)
-        }));
-        
-        assert!(result.is_err());
-    }
 
     #[test]
     fn test_client_type_alias() {

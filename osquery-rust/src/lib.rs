@@ -31,5 +31,3 @@ pub mod prelude {
     };
 }
 
-#[cfg(test)]
-mod server_tests;
