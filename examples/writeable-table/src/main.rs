@@ -67,15 +67,15 @@ impl Table for WriteableTable {
             return UpdateResult::Error("Could not parse row as array".to_string());
         };
 
-        if row_array.len() < 2 {
+        let [name, lastname] = row_array.as_slice() else {
             return UpdateResult::Error("Row must have at least 2 elements".to_string());
-        }
+        };
 
-        let Some(name) = row_array[0].as_str() else {
+        let Some(name) = name.as_str() else {
             return UpdateResult::Error("Name must be a string".to_string());
         };
 
-        let Some(lastname) = row_array[1].as_str() else {
+        let Some(lastname) = lastname.as_str() else {
             return UpdateResult::Error("Lastname must be a string".to_string());
         };
 
@@ -103,15 +103,15 @@ impl Table for WriteableTable {
             return InsertResult::Error("Could not parse row as array".to_string());
         };
 
-        if row_array.len() < 2 {
+        let [name, lastname] = row_array.as_slice() else {
             return InsertResult::Error("Row must have at least 2 elements".to_string());
-        }
+        };
 
-        let Some(name) = row_array[0].as_str() else {
+        let Some(name) = name.as_str() else {
             return InsertResult::Error("Name must be a string".to_string());
         };
 
-        let Some(lastname) = row_array[1].as_str() else {
+        let Some(lastname) = lastname.as_str() else {
             return InsertResult::Error("Lastname must be a string".to_string());
         };
 
