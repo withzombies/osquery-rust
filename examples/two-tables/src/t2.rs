@@ -26,7 +26,7 @@ impl Table for Table2 {
         ]
     }
 
-    fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
+    fn generate(&mut self, _req: ExtensionPluginRequest) -> ExtensionResponse {
         let resp = BTreeMap::from([
             ("top".to_string(), "top".to_string()),
             ("bottom".to_string(), "bottom".to_string()),
@@ -35,16 +35,16 @@ impl Table for Table2 {
         ExtensionResponse::new(ExtensionStatus::default(), vec![resp])
     }
 
-    fn update(&mut self, _rowid: u64, _row: &Value) -> UpdateResult {
-        UpdateResult::Constraint
+    fn update(&mut self, _rowid: String, _row: serde_json::Value) -> UpdateResult {
+        UpdateResult::Error("Table t2 is read-only".to_string())
     }
 
-    fn delete(&mut self, _rowid: u64) -> DeleteResult {
-        DeleteResult::Err("Not yet implemented".to_string())
+    fn delete(&mut self, _rowid: String) -> DeleteResult {
+        DeleteResult::Error("Table t2 is read-only".to_string())
     }
 
-    fn insert(&mut self, _auto_rowid: bool, _row: &Value) -> InsertResult {
-        InsertResult::Constraint
+    fn insert(&mut self, _row: serde_json::Value) -> InsertResult {
+        InsertResult::Error("Table t2 is read-only".to_string())
     }
 
     fn shutdown(&self) {

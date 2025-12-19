@@ -11,7 +11,8 @@ use std::collections::BTreeMap;
 use std::io::{Error, ErrorKind};
 
 struct WriteableTable {
-    items: BTreeMap<u64, (String, String)>,
+    items: BTreeMap<String, (String, String)>,
+    next_id: u64,
 }
 
 impl WriteableTable {
@@ -20,8 +21,9 @@ impl WriteableTable {
             items: vec!["foo".to_string(), "bar".to_string(), "baz".to_string()]
                 .into_iter()
                 .enumerate()
-                .map(|(idx, item)| (idx as u64, (item.clone(), item.clone())))
+                .map(|(idx, item)| (idx.to_string(), (item.clone(), item.clone())))
                 .collect(),
+            next_id: 3,
         }
     }
 }
@@ -43,7 +45,7 @@ impl Table for WriteableTable {
         ]
     }
 
-    fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
+    fn generate(&mut self, _req: ExtensionPluginRequest) -> ExtensionResponse {
         let resp = self
             .items
             .iter()
@@ -59,76 +61,67 @@ impl Table for WriteableTable {
         ExtensionResponse::new(ExtensionStatus::default(), resp)
     }
 
-    fn update(&mut self, rowid: u64, row: &Value) -> UpdateResult {
+    fn update(&mut self, rowid: String, row: serde_json::Value) -> UpdateResult {
         log::info!("updating item at {rowid} = {row:?}");
 
-        let Some(row) = row.as_array() else {
-            return UpdateResult::Err("Could not parse row as array".to_string());
+        let Some(row_array) = row.as_array() else {
+            return UpdateResult::Error("Could not parse row as array".to_string());
         };
 
-        let &[
-            Value::Number(rowid),
-            Value::String(name),
-            Value::String(lastname),
-        ] = &row.as_slice()
-        else {
-            return UpdateResult::Err("Could not parse row update".to_string());
+        if row_array.len() < 2 {
+            return UpdateResult::Error("Row must have at least 2 elements".to_string());
+        }
+
+        let Some(name) = row_array[0].as_str() else {
+            return UpdateResult::Error("Name must be a string".to_string());
         };
 
-        let Some(rowid) = rowid.as_u64() else {
-            return UpdateResult::Err("Could not parse rowid as u64".to_string());
+        let Some(lastname) = row_array[1].as_str() else {
+            return UpdateResult::Error("Lastname must be a string".to_string());
         };
 
-        self.items.insert(rowid, (name.clone(), lastname.clone()));
-
-        UpdateResult::Success
-    }
-
-    fn delete(&mut self, rowid: u64) -> DeleteResult {
-        log::info!("deleting item: {rowid}");
-
-        match self.items.remove(&rowid) {
-            Some(_) => DeleteResult::Success,
-            None => DeleteResult::Err("Could not find rowid".to_string()),
+        if self.items.contains_key(&rowid) {
+            self.items.insert(rowid, (name.to_string(), lastname.to_string()));
+            UpdateResult::Ok
+        } else {
+            UpdateResult::NotFound
         }
     }
 
-    fn insert(&mut self, _auto_rowid: bool, row: &Value) -> InsertResult {
+    fn delete(&mut self, rowid: String) -> DeleteResult {
+        log::info!("deleting item: {rowid}");
+
+        match self.items.remove(&rowid) {
+            Some(_) => DeleteResult::Ok,
+            None => DeleteResult::NotFound,
+        }
+    }
+
+    fn insert(&mut self, row: serde_json::Value) -> InsertResult {
         log::info!("inserting item: {row:?}");
 
-        let Some(row) = row.as_array() else {
-            return InsertResult::Err("Could not parse row as array".to_string());
+        let Some(row_array) = row.as_array() else {
+            return InsertResult::Error("Could not parse row as array".to_string());
         };
 
-        let rowid = match &row.as_slice() {
-            [Value::Null, Value::String(name), Value::String(lastname)] => {
-                // TODO: figure out what auto_rowid means here
-                let rowid = self.items.keys().next_back().unwrap_or(&0u64) + 1;
-                log::info!("rowid: {rowid}");
+        if row_array.len() < 2 {
+            return InsertResult::Error("Row must have at least 2 elements".to_string());
+        }
 
-                self.items.insert(rowid, (name.clone(), lastname.clone()));
-
-                rowid
-            }
-            [
-                Value::Number(rowid),
-                Value::String(name),
-                Value::String(lastname),
-            ] => {
-                let Some(rowid) = rowid.as_u64() else {
-                    return InsertResult::Err("Could not parse rowid as u64".to_string());
-                };
-
-                self.items.insert(rowid, (name.clone(), lastname.clone()));
-
-                rowid
-            }
-            _ => {
-                return InsertResult::Constraint;
-            }
+        let Some(name) = row_array[0].as_str() else {
+            return InsertResult::Error("Name must be a string".to_string());
         };
 
-        InsertResult::Success(rowid)
+        let Some(lastname) = row_array[1].as_str() else {
+            return InsertResult::Error("Lastname must be a string".to_string());
+        };
+
+        let rowid = self.next_id.to_string();
+        self.next_id += 1;
+        
+        self.items.insert(rowid.clone(), (name.to_string(), lastname.to_string()));
+
+        InsertResult::Ok(rowid)
     }
     fn shutdown(&self) {
         info!("Shutting down");
@@ -183,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_generate_returns_initial_data() {
-        let table = WriteableTable::new();
+        let mut table = WriteableTable::new();
         let response = table.generate(ExtensionPluginRequest::default());
         let rows = response.response.expect("should have rows");
 
@@ -198,14 +191,14 @@ mod tests {
     fn test_insert_with_auto_rowid() {
         let mut table = WriteableTable::new();
 
-        // Insert with null rowid (auto-assign)
-        let row = json!([null, "alice", "smith"]);
-        let result = table.insert(true, &row);
+        // Insert new row (auto-assign rowid)
+        let row = json!(["alice", "smith"]);
+        let result = table.insert(row);
 
-        let InsertResult::Success(rowid) = result else {
-            panic!("Expected InsertResult::Success");
+        let InsertResult::Ok(rowid) = result else {
+            panic!("Expected InsertResult::Ok");
         };
-        assert_eq!(rowid, 3); // Next after 0, 1, 2
+        assert_eq!(rowid, "3"); // Next after 0, 1, 2
 
         // Verify the row was added
         let response = table.generate(ExtensionPluginRequest::default());
@@ -214,28 +207,28 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_with_explicit_rowid() {
+    fn test_insert_another_row() {
         let mut table = WriteableTable::new();
 
-        // Insert with explicit rowid
-        let row = json!([100, "bob", "jones"]);
-        let result = table.insert(false, &row);
+        // Insert another row
+        let row = json!(["bob", "jones"]);
+        let result = table.insert(row);
 
-        let InsertResult::Success(rowid) = result else {
-            panic!("Expected InsertResult::Success");
+        let InsertResult::Ok(rowid) = result else {
+            panic!("Expected InsertResult::Ok");
         };
-        assert_eq!(rowid, 100);
+        assert_eq!(rowid, "3");
     }
 
     #[test]
-    fn test_insert_invalid_row_returns_constraint() {
+    fn test_insert_invalid_row_returns_error() {
         let mut table = WriteableTable::new();
 
         // Invalid row format
         let row = json!(["invalid"]);
-        let result = table.insert(false, &row);
+        let result = table.insert(row);
 
-        assert!(matches!(result, InsertResult::Constraint));
+        assert!(matches!(result, InsertResult::Error(_)));
     }
 
     #[test]
@@ -243,10 +236,10 @@ mod tests {
         let mut table = WriteableTable::new();
 
         // Update row 0 (foo -> updated)
-        let row = json!([0, "updated_name", "updated_lastname"]);
-        let result = table.update(0, &row);
+        let row = json!(["updated_name", "updated_lastname"]);
+        let result = table.update("0".to_string(), row);
 
-        assert!(matches!(result, UpdateResult::Success));
+        assert!(matches!(result, UpdateResult::Ok));
 
         // Verify the update
         let response = table.generate(ExtensionPluginRequest::default());
@@ -263,9 +256,9 @@ mod tests {
 
         // Invalid row (not an array)
         let row = json!({"name": "test"});
-        let result = table.update(0, &row);
+        let result = table.update("0".to_string(), row);
 
-        assert!(matches!(result, UpdateResult::Err(_)));
+        assert!(matches!(result, UpdateResult::Error(_)));
     }
 
     #[test]
@@ -273,8 +266,8 @@ mod tests {
         let mut table = WriteableTable::new();
 
         // Delete row 0
-        let result = table.delete(0);
-        assert!(matches!(result, DeleteResult::Success));
+        let result = table.delete("0".to_string());
+        assert!(matches!(result, DeleteResult::Ok));
 
         // Verify deletion
         let response = table.generate(ExtensionPluginRequest::default());
@@ -287,9 +280,9 @@ mod tests {
         let mut table = WriteableTable::new();
 
         // Try to delete non-existent row
-        let result = table.delete(999);
+        let result = table.delete("999".to_string());
 
-        assert!(matches!(result, DeleteResult::Err(_)));
+        assert!(matches!(result, DeleteResult::NotFound));
     }
 
     #[test]
@@ -297,8 +290,8 @@ mod tests {
         let mut table = WriteableTable::new();
 
         // Create
-        let row = json!([null, "new_user", "new_lastname"]);
-        let InsertResult::Success(new_rowid) = table.insert(true, &row) else {
+        let row = json!(["new_user", "new_lastname"]);
+        let InsertResult::Ok(new_rowid) = table.insert(row) else {
             panic!("Insert failed");
         };
 
@@ -308,14 +301,14 @@ mod tests {
         assert_eq!(rows.len(), 4);
 
         // Update
-        let updated = json!([new_rowid, "modified", "user"]);
+        let updated = json!(["modified", "user"]);
         assert!(matches!(
-            table.update(new_rowid, &updated),
-            UpdateResult::Success
+            table.update(new_rowid.clone(), updated),
+            UpdateResult::Ok
         ));
 
         // Delete
-        assert!(matches!(table.delete(new_rowid), DeleteResult::Success));
+        assert!(matches!(table.delete(new_rowid), DeleteResult::Ok));
 
         // Verify final state
         let response = table.generate(ExtensionPluginRequest::default());
