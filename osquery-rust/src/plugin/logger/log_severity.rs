@@ -2,8 +2,9 @@
 use std::fmt;
 
 /// Log severity levels as defined by osquery
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LogSeverity {
+    #[default]
     Info = 0,
     Warning = 1,
     Error = 2,
@@ -29,12 +30,6 @@ impl TryFrom<i64> for LogSeverity {
             2 => Ok(LogSeverity::Error),
             _ => Err(format!("Invalid log severity: {}", value)),
         }
-    }
-}
-
-impl Default for LogSeverity {
-    fn default() -> Self {
-        LogSeverity::Info
     }
 }
 

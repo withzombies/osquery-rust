@@ -1,5 +1,5 @@
 /// Logger feature flags for osquery plugins
-
+///
 /// Feature flags that logger plugins can advertise to osquery
 ///
 /// These flags tell osquery which additional log types the plugin supports.
@@ -39,7 +39,7 @@ mod tests {
         // Test combining features with bitwise OR
         let combined = LoggerFeatures::LOG_STATUS | LoggerFeatures::LOG_EVENT;
         assert_eq!(combined, 3);
-        
+
         // Test that BLANK combined with anything gives the other value
         let with_blank = LoggerFeatures::BLANK | LoggerFeatures::LOG_STATUS;
         assert_eq!(with_blank, LoggerFeatures::LOG_STATUS);
@@ -48,10 +48,16 @@ mod tests {
     #[test]
     fn test_feature_detection() {
         let features = LoggerFeatures::LOG_STATUS | LoggerFeatures::LOG_EVENT;
-        
+
         // Test that we can detect individual features
-        assert_eq!(features & LoggerFeatures::LOG_STATUS, LoggerFeatures::LOG_STATUS);
-        assert_eq!(features & LoggerFeatures::LOG_EVENT, LoggerFeatures::LOG_EVENT);
+        assert_eq!(
+            features & LoggerFeatures::LOG_STATUS,
+            LoggerFeatures::LOG_STATUS
+        );
+        assert_eq!(
+            features & LoggerFeatures::LOG_EVENT,
+            LoggerFeatures::LOG_EVENT
+        );
         assert_eq!(features & LoggerFeatures::BLANK, LoggerFeatures::BLANK);
     }
 }
