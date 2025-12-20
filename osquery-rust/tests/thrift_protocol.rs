@@ -6,7 +6,7 @@
 
 use osquery_rust_ng::{OsqueryClient, ThriftClient};
 use std::io::{Read, Write};
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixListener;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
