@@ -63,12 +63,12 @@ mod tests {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let handle1 = ServerStopHandle::new(shutdown_flag);
         let handle2 = handle1.clone();
-        
+
         assert!(handle1.is_running());
         assert!(handle2.is_running());
-        
+
         handle1.stop();
-        
+
         assert!(!handle1.is_running());
         assert!(!handle2.is_running());
     }
@@ -77,11 +77,11 @@ mod tests {
     fn test_server_multiple_stop_calls() {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let handle = ServerStopHandle::new(shutdown_flag);
-        
+
         handle.stop();
         handle.stop(); // Should be idempotent
         handle.stop();
-        
+
         assert!(!handle.is_running());
     }
 
@@ -89,7 +89,7 @@ mod tests {
     fn test_initial_state_running() {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let handle = ServerStopHandle::new(shutdown_flag);
-        
+
         assert!(handle.is_running());
     }
 
@@ -97,7 +97,7 @@ mod tests {
     fn test_initial_state_stopped() {
         let shutdown_flag = Arc::new(AtomicBool::new(true));
         let handle = ServerStopHandle::new(shutdown_flag);
-        
+
         assert!(!handle.is_running());
     }
 }
