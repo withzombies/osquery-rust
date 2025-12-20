@@ -30,4 +30,3 @@ pub mod prelude {
         ExtensionPluginRequest, ExtensionPluginResponse, ExtensionResponse, ExtensionStatus,
     };
 }
-

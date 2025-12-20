@@ -3,7 +3,7 @@
 //! These tests verify that the server can gracefully shutdown when requested,
 //! rather than blocking forever in listen_uds().
 
-use osquery_rust_ng::{Server, plugin::Plugin};
+use osquery_rust_ng::{plugin::Plugin, Server};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixListener;
 use std::sync::atomic::{AtomicBool, Ordering};

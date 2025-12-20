@@ -68,12 +68,12 @@ mod tests {
     fn test_ok_or_thrift_err_closure_evaluation() {
         let mut called = false;
         let value: Option<i32> = None;
-        
+
         let _result = value.ok_or_thrift_err(|| {
             called = true;
             "closure called".to_string()
         });
-        
+
         assert!(called, "Error function should be called for None");
     }
 
@@ -81,12 +81,12 @@ mod tests {
     fn test_ok_or_thrift_err_closure_not_evaluated() {
         let mut called = false;
         let value: Option<i32> = Some(42);
-        
+
         let result = value.ok_or_thrift_err(|| {
             called = true;
             "should not be called".to_string()
         });
-        
+
         assert!(!called, "Error function should not be called for Some");
         assert!(result.is_ok());
     }
@@ -96,7 +96,7 @@ mod tests {
         let value: Option<i32> = None;
         let result = value.ok_or_thrift_err(|| "".to_string());
         assert!(result.is_err());
-        
+
         let err = result.err().unwrap();
         if let thrift::Error::Application(app_err) = err {
             assert_eq!(app_err.message, "");

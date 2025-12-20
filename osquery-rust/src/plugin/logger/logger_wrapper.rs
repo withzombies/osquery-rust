@@ -1,9 +1,9 @@
 /// Logger plugin wrapper for osquery integration
 use crate::_osquery::osquery::{ExtensionPluginRequest, ExtensionPluginResponse};
 use crate::_osquery::osquery::{ExtensionResponse, ExtensionStatus};
-use crate::plugin::logger::logger_plugin::LoggerPlugin;
-use crate::plugin::logger::log_status::LogStatus;
 use crate::plugin::logger::log_severity::LogSeverity;
+use crate::plugin::logger::log_status::LogStatus;
+use crate::plugin::logger::logger_plugin::LoggerPlugin;
 use crate::plugin::OsqueryPlugin;
 use crate::plugin::_enums::response::ExtensionResponseEnum;
 use serde_json::Value;
@@ -147,12 +147,8 @@ impl<L: LoggerPlugin> LoggerPluginWrapper<L> {
         match request_type {
             LogRequestType::StatusLog(entries) => {
                 for entry in entries {
-                    let status = LogStatus::new(
-                        entry.severity,
-                        entry.filename,
-                        entry.line,
-                        entry.message,
-                    );
+                    let status =
+                        LogStatus::new(entry.severity, entry.filename, entry.line, entry.message);
                     self.logger.log_status(&status)?;
                 }
                 Ok(())
@@ -215,8 +211,8 @@ impl<L: LoggerPlugin> OsqueryPlugin for LoggerPluginWrapper<L> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin::logger::logger_plugin::LoggerPlugin;
     use crate::plugin::logger::logger_features::LoggerFeatures;
+    use crate::plugin::logger::logger_plugin::LoggerPlugin;
     use crate::plugin::OsqueryPlugin;
 
     /// A minimal logger for testing

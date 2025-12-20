@@ -122,7 +122,7 @@ mod tests {
         assert_eq!(LoggerFeatures::BLANK, 0);
         assert_eq!(LoggerFeatures::LOG_STATUS, 1);
         assert_eq!(LoggerFeatures::LOG_EVENT, 2);
-        
+
         // Test combining features
         let combined = LoggerFeatures::LOG_STATUS | LoggerFeatures::LOG_EVENT;
         assert_eq!(combined, 3);
@@ -137,16 +137,16 @@ mod tests {
     #[test]
     fn test_logger_plugin_default_implementations() {
         let logger = TestLogger;
-        
+
         // Test default features
         assert_eq!(logger.features(), LoggerFeatures::LOG_STATUS);
-        
+
         // Test default init
         assert!(logger.init("test").is_ok());
-        
+
         // Test default health
         assert!(logger.health().is_ok());
-        
+
         // Test default shutdown (should not panic)
         logger.shutdown();
     }
@@ -155,7 +155,7 @@ mod tests {
     fn test_logger_plugin_log_status_default() {
         let logger = TestLogger;
         let status = LogStatus::info("test.cpp".to_string(), 42, "test message".to_string());
-        
+
         // Default log_status implementation should call log_string
         assert!(logger.log_status(&status).is_ok());
     }
@@ -163,7 +163,7 @@ mod tests {
     #[test]
     fn test_logger_plugin_log_snapshot_default() {
         let logger = TestLogger;
-        
+
         // Default log_snapshot implementation should call log_string
         assert!(logger.log_snapshot("snapshot data").is_ok());
     }

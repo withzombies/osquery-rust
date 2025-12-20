@@ -81,7 +81,8 @@ impl Table for WriteableTable {
         };
 
         if self.items.contains_key(&rowid) {
-            self.items.insert(rowid, (name.to_string(), lastname.to_string()));
+            self.items
+                .insert(rowid, (name.to_string(), lastname.to_string()));
             UpdateResult::Ok
         } else {
             UpdateResult::NotFound
@@ -118,8 +119,9 @@ impl Table for WriteableTable {
 
         let rowid = self.next_id.to_string();
         self.next_id += 1;
-        
-        self.items.insert(rowid.clone(), (name.to_string(), lastname.to_string()));
+
+        self.items
+            .insert(rowid.clone(), (name.to_string(), lastname.to_string()));
 
         InsertResult::Ok(rowid)
     }

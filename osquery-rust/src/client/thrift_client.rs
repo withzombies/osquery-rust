@@ -131,7 +131,6 @@ mod tests {
     use std::io::ErrorKind;
     use std::time::Duration;
 
-
     #[test]
     fn test_thrift_client_new_with_invalid_path() {
         let result = ThriftClient::new("/nonexistent/socket", Duration::from_secs(1));
@@ -151,12 +150,14 @@ mod tests {
         assert!(result.is_err());
     }
 
-
     #[test]
     fn test_client_type_alias() {
         use std::mem;
-        
+
         assert_eq!(mem::size_of::<Client>(), mem::size_of::<ThriftClient>());
-        assert_eq!(std::any::type_name::<Client>(), std::any::type_name::<ThriftClient>());
+        assert_eq!(
+            std::any::type_name::<Client>(),
+            std::any::type_name::<ThriftClient>()
+        );
     }
 }

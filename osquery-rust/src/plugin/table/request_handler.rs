@@ -142,9 +142,9 @@ impl TablePlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::_osquery::ExtensionStatus;
     use crate::plugin::table::column_def::{ColumnDef, ColumnOptions, ColumnType};
     use crate::plugin::table::traits::{ReadOnlyTable, Table};
-    use crate::_osquery::ExtensionStatus;
     use std::collections::HashMap;
 
     struct TestTable {
@@ -167,7 +167,11 @@ mod tests {
         }
 
         fn columns(&self) -> Vec<ColumnDef> {
-            vec![ColumnDef::new("id", ColumnType::Text, ColumnOptions::empty())]
+            vec![ColumnDef::new(
+                "id",
+                ColumnType::Text,
+                ColumnOptions::empty(),
+            )]
         }
 
         fn generate(&mut self, _request: ExtensionPluginRequest) -> ExtensionResponse {
@@ -209,7 +213,11 @@ mod tests {
         }
 
         fn columns(&self) -> Vec<ColumnDef> {
-            vec![ColumnDef::new("col", ColumnType::Text, ColumnOptions::empty())]
+            vec![ColumnDef::new(
+                "col",
+                ColumnType::Text,
+                ColumnOptions::empty(),
+            )]
         }
 
         fn generate(&self, _request: ExtensionPluginRequest) -> ExtensionResponse {
@@ -248,7 +256,7 @@ mod tests {
         let response = plugin.parse_request(request);
         let status = response.status.as_ref().unwrap();
         assert_eq!(status.code, Some(1));
-        
+
         // Check that the readonly status is in the response data
         let rows = response.response.as_ref().unwrap();
         assert!(!rows.is_empty());
