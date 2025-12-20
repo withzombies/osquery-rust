@@ -24,17 +24,34 @@
 
 #![cfg(feature = "osquery-tests")]
 
+mod socket_helpers;
+mod extension_helpers;
+mod test_tables;
+mod basic_tests;
+mod plugin_tests;
+mod autoload_tests;
+
 #[allow(clippy::expect_used, clippy::panic)] // Integration tests can panic on infra failures
 mod tests {
+    use crate::socket_helpers::get_osquery_socket;
+    use crate::extension_helpers::wait_for_extension_registered;
+    use crate::test_tables::{TestEndToEndTable, TestLifecycleTable};
+    use crate::basic_tests::*;
+    use crate::plugin_tests::*;
+    use crate::autoload_tests::*;
+}
+
+#[cfg(feature = "osquery-tests")]
+mod socket_helpers {
     use std::path::Path;
     use std::time::Duration;
 
-    const SOCKET_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
-    const SOCKET_POLL_INTERVAL: Duration = Duration::from_millis(100);
+    pub const SOCKET_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+    pub const SOCKET_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
     /// Get the osquery extensions socket path from environment or common locations.
     /// Waits up to SOCKET_WAIT_TIMEOUT for socket to appear.
-    fn get_osquery_socket() -> String {
+    pub fn get_osquery_socket() -> String {
         let start = std::time::Instant::now();
 
         // Build list of paths to check
@@ -86,15 +103,19 @@ mod tests {
             std::thread::sleep(SOCKET_POLL_INTERVAL);
         }
     }
+}
+
+#[cfg(feature = "osquery-tests")]
+mod extension_helpers {
+    use std::time::Duration;
+    use osquery_rust_ng::{OsqueryClient, ThriftClient};
+
+    pub const REGISTRATION_TIMEOUT: Duration = Duration::from_secs(10);
+    pub const REGISTRATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
     /// Wait for an extension to be registered in osquery.
     /// Polls `osquery_extensions` table until the extension name appears or timeout.
-    fn wait_for_extension_registered(socket_path: &str, extension_name: &str) {
-        use osquery_rust_ng::{OsqueryClient, ThriftClient};
-
-        const REGISTRATION_TIMEOUT: Duration = Duration::from_secs(10);
-        const REGISTRATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
-
+    pub fn wait_for_extension_registered(socket_path: &str, extension_name: &str) {
         let start = std::time::Instant::now();
         let query = format!(
             "SELECT name FROM osquery_extensions WHERE name = '{}'",
@@ -129,12 +150,84 @@ mod tests {
             std::thread::sleep(REGISTRATION_POLL_INTERVAL);
         }
     }
+}
 
-    /// Test ThriftClient can connect to osquery socket.
+#[cfg(feature = "osquery-tests")]
+mod test_tables {
+    use osquery_rust_ng::plugin::{ColumnDef, ColumnOptions, ColumnType, ReadOnlyTable};
+    use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus};
+    use std::collections::BTreeMap;
+
+    pub struct TestLifecycleTable;
+
+    impl ReadOnlyTable for TestLifecycleTable {
+        fn name(&self) -> String {
+            "test_lifecycle_table".to_string()
+        }
+
+        fn columns(&self) -> Vec<ColumnDef> {
+            vec![ColumnDef::new(
+                "id",
+                ColumnType::Text,
+                ColumnOptions::DEFAULT,
+            )]
+        }
+
+        fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
+            ExtensionResponse::new(
+                ExtensionStatus {
+                    code: Some(0),
+                    message: Some("OK".to_string()),
+                    uuid: None,
+                },
+                vec![],
+            )
+        }
+
+        fn shutdown(&self) {}
+    }
+
+    pub struct TestEndToEndTable;
+
+    impl ReadOnlyTable for TestEndToEndTable {
+        fn name(&self) -> String {
+            "test_e2e_table".to_string()
+        }
+
+        fn columns(&self) -> Vec<ColumnDef> {
+            vec![
+                ColumnDef::new("id", ColumnType::Integer, ColumnOptions::DEFAULT),
+                ColumnDef::new("name", ColumnType::Text, ColumnOptions::DEFAULT),
+            ]
+        }
+
+        fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
+            let mut row = BTreeMap::new();
+            row.insert("id".to_string(), "42".to_string());
+            row.insert("name".to_string(), "test_value".to_string());
+
+            ExtensionResponse::new(
+                ExtensionStatus {
+                    code: Some(0),
+                    message: Some("OK".to_string()),
+                    uuid: None,
+                },
+                vec![row],
+            )
+        }
+
+        fn shutdown(&self) {}
+    }
+}
+
+#[cfg(feature = "osquery-tests")]
+#[allow(clippy::expect_used, clippy::panic)]
+mod basic_tests {
+    use osquery_rust_ng::{OsqueryClient, ThriftClient};
+    use crate::socket_helpers::get_osquery_socket;
+
     #[test]
-    fn test_thrift_client_connects_to_osquery() {
-        use osquery_rust_ng::ThriftClient;
-
+    pub fn test_thrift_client_connects_to_osquery() {
         let socket_path = get_osquery_socket();
         eprintln!("Using osquery socket: {}", socket_path);
 
@@ -146,11 +239,8 @@ mod tests {
         }
     }
 
-    /// Test ThriftClient ping functionality.
     #[test]
-    fn test_thrift_client_ping() {
-        use osquery_rust_ng::{OsqueryClient, ThriftClient};
-
+    pub fn test_thrift_client_ping() {
         let socket_path = get_osquery_socket();
         eprintln!("Using osquery socket: {}", socket_path);
 
@@ -172,11 +262,8 @@ mod tests {
         }
     }
 
-    /// Test querying osquery_info table via ThriftClient.
     #[test]
-    fn test_query_osquery_info() {
-        use osquery_rust_ng::{OsqueryClient, ThriftClient};
-
+    pub fn test_query_osquery_info() {
         let socket_path = get_osquery_socket();
         eprintln!("Using osquery socket: {}", socket_path);
 
@@ -202,45 +289,20 @@ mod tests {
 
         eprintln!("SUCCESS: Query returned {} rows", rows.len());
     }
+}
+
+#[cfg(feature = "osquery-tests")]
+#[allow(clippy::expect_used, clippy::panic)]
+mod plugin_tests {
+    use osquery_rust_ng::plugin::TablePlugin;
+    use osquery_rust_ng::{OsqueryClient, Server, ThriftClient};
+    use std::thread;
+    use crate::socket_helpers::get_osquery_socket;
+    use crate::extension_helpers::wait_for_extension_registered;
+    use crate::test_tables::{TestEndToEndTable, TestLifecycleTable};
 
     #[test]
-    fn test_server_lifecycle() {
-        use osquery_rust_ng::plugin::{
-            ColumnDef, ColumnOptions, ColumnType, ReadOnlyTable, TablePlugin,
-        };
-        use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus, Server};
-        use std::thread;
-
-        // Create a simple test table
-        struct TestLifecycleTable;
-
-        impl ReadOnlyTable for TestLifecycleTable {
-            fn name(&self) -> String {
-                "test_lifecycle_table".to_string()
-            }
-
-            fn columns(&self) -> Vec<ColumnDef> {
-                vec![ColumnDef::new(
-                    "id",
-                    ColumnType::Text,
-                    ColumnOptions::DEFAULT,
-                )]
-            }
-
-            fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-                ExtensionResponse::new(
-                    ExtensionStatus {
-                        code: Some(0),
-                        message: Some("OK".to_string()),
-                        uuid: None,
-                    },
-                    vec![],
-                )
-            }
-
-            fn shutdown(&self) {}
-        }
-
+    pub fn test_server_lifecycle() {
         let socket_path = get_osquery_socket();
         eprintln!("Using osquery socket: {}", socket_path);
 
@@ -273,50 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn test_table_plugin_end_to_end() {
-        use osquery_rust_ng::plugin::{
-            ColumnDef, ColumnOptions, ColumnType, ReadOnlyTable, TablePlugin,
-        };
-        use osquery_rust_ng::{
-            ExtensionPluginRequest, ExtensionResponse, ExtensionStatus, OsqueryClient, Server,
-            ThriftClient,
-        };
-        use std::collections::BTreeMap;
-        use std::thread;
-
-        // Create test table that returns known data
-        struct TestEndToEndTable;
-
-        impl ReadOnlyTable for TestEndToEndTable {
-            fn name(&self) -> String {
-                "test_e2e_table".to_string()
-            }
-
-            fn columns(&self) -> Vec<ColumnDef> {
-                vec![
-                    ColumnDef::new("id", ColumnType::Integer, ColumnOptions::DEFAULT),
-                    ColumnDef::new("name", ColumnType::Text, ColumnOptions::DEFAULT),
-                ]
-            }
-
-            fn generate(&self, _req: ExtensionPluginRequest) -> ExtensionResponse {
-                let mut row = BTreeMap::new();
-                row.insert("id".to_string(), "42".to_string());
-                row.insert("name".to_string(), "test_value".to_string());
-
-                ExtensionResponse::new(
-                    ExtensionStatus {
-                        code: Some(0),
-                        message: Some("OK".to_string()),
-                        uuid: None,
-                    },
-                    vec![row],
-                )
-            }
-
-            fn shutdown(&self) {}
-        }
-
+    pub fn test_table_plugin_end_to_end() {
         let socket_path = get_osquery_socket();
         eprintln!("Using osquery socket: {}", socket_path);
 
@@ -361,18 +380,12 @@ mod tests {
         eprintln!("SUCCESS: End-to-end table query returned expected data");
     }
 
-    // Note: Config plugin integration testing requires autoload configuration.
-    // Runtime-registered config plugins are not used by osquery automatically.
-    // To test config plugins, build a config extension, autoload it, and configure
-    // osqueryd with --config_plugin=<your_plugin_name>.
-
     #[test]
-    fn test_logger_plugin_registers_successfully() {
+    pub fn test_logger_plugin_registers_successfully() {
         use osquery_rust_ng::plugin::{LogStatus, LoggerPlugin, Plugin};
-        use osquery_rust_ng::{OsqueryClient, Server, ThriftClient};
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
-        use std::thread;
+        use std::time::Duration;
 
         // Create a logger plugin that counts log calls
         struct TestLoggerPlugin {
@@ -465,18 +478,19 @@ mod tests {
         // and test_autoloaded_logger_receives_logs (daemon mode required).
         eprintln!("SUCCESS: Logger plugin registered successfully");
     }
+}
 
-    /// Test that the autoloaded logger-file extension receives init callback from osquery.
-    ///
-    /// This test verifies the logger-file example extension is properly autoloaded
-    /// by osqueryd and receives the init() callback. The pre-commit hook sets up
-    /// the autoload configuration and exports TEST_LOGGER_FILE with the log path.
-    ///
-    /// Requires: osqueryd with autoload configured (set up by pre-commit hook)
+#[cfg(feature = "osquery-tests")]
+#[allow(clippy::expect_used, clippy::panic)]
+mod autoload_tests {
+    use osquery_rust_ng::{OsqueryClient, ThriftClient};
+    use std::fs;
+    use std::process::Command;
+    use std::time::Duration;
+    use crate::socket_helpers::get_osquery_socket;
+
     #[test]
-    fn test_autoloaded_logger_receives_init() {
-        use std::fs;
-
+    pub fn test_autoloaded_logger_receives_init() {
         // Get the autoloaded logger's log file path from environment
         let log_path = match std::env::var("TEST_LOGGER_FILE") {
             Ok(path) => path,
@@ -512,16 +526,8 @@ mod tests {
         eprintln!("SUCCESS: Autoloaded logger-file extension received init callback");
     }
 
-    /// Test that the autoloaded logger-file extension receives log callbacks from osquery.
-    ///
-    /// This test verifies that osquery actually sends logs to the file_logger plugin,
-    /// not just that it was initialized. This tests the log_status callback path.
-    ///
-    /// Requires: osqueryd with autoload configured (set up by pre-commit hook)
     #[test]
-    fn test_autoloaded_logger_receives_logs() {
-        use std::fs;
-
+    pub fn test_autoloaded_logger_receives_logs() {
         // Get the autoloaded logger's log file path from environment
         let log_path = match std::env::var("TEST_LOGGER_FILE") {
             Ok(path) => path,
@@ -567,18 +573,8 @@ mod tests {
         eprintln!("SUCCESS: Autoloaded logger received osquery core log messages");
     }
 
-    /// Test that the autoloaded config-static extension provides configuration to osquery.
-    ///
-    /// This test verifies:
-    /// 1. The config plugin's gen_config() was called (marker file exists)
-    /// 2. osquery actually used the configuration (schedule queries are present)
-    ///
-    /// Requires: osqueryd with autoload and --config_plugin=static_config
     #[test]
-    fn test_autoloaded_config_provides_config() {
-        use osquery_rust_ng::{OsqueryClient, ThriftClient};
-        use std::fs;
-
+    pub fn test_autoloaded_config_provides_config() {
         // Get the config marker file path from environment
         let marker_path = match std::env::var("TEST_CONFIG_MARKER_FILE") {
             Ok(path) => path,
@@ -668,23 +664,8 @@ mod tests {
         );
     }
 
-    /// Test that the autoloaded logger-file extension receives snapshot logs from scheduled queries.
-    ///
-    /// This test verifies the complete log_snapshot callback path:
-    /// 1. The logger plugin advertises LOG_EVENT feature
-    /// 2. A scheduled query executes (osquery_info_snapshot runs every 3 seconds)
-    /// 3. osquery sends the query results to log_snapshot()
-    /// 4. The logger writes [SNAPSHOT] entries to the log file
-    ///
-    /// The startup script uses `osqueryi --connect` to verify extensions are ready
-    /// and waits for the first scheduled query, so snapshots should exist immediately.
-    ///
-    /// Requires: osqueryd with autoload configured (set up by pre-commit hook)
     #[test]
-    fn test_autoloaded_logger_receives_snapshots() {
-        use std::fs;
-        use std::process::Command;
-
+    pub fn test_autoloaded_logger_receives_snapshots() {
         // Get the autoloaded logger's log file path from environment
         let log_path = match std::env::var("TEST_LOGGER_FILE") {
             Ok(path) => path,

@@ -1,38 +1,10 @@
+/// Thrift client implementation for osquery communication
 use crate::_osquery as osquery;
+use crate::client::trait_def::OsqueryClient;
 use std::io::Error;
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
-
-/// Trait for osquery daemon communication - enables mocking in tests.
-///
-/// This trait exposes only the methods that `Server` actually needs to communicate
-/// with the osquery daemon. Implementing this trait allows creating mock clients
-/// for testing without requiring a real osquery socket connection.
-#[cfg_attr(test, mockall::automock)]
-pub trait OsqueryClient: Send {
-    /// Register this extension with the osquery daemon.
-    fn register_extension(
-        &mut self,
-        info: osquery::InternalExtensionInfo,
-        registry: osquery::ExtensionRegistry,
-    ) -> thrift::Result<osquery::ExtensionStatus>;
-
-    /// Deregister this extension from the osquery daemon.
-    fn deregister_extension(
-        &mut self,
-        uuid: osquery::ExtensionRouteUUID,
-    ) -> thrift::Result<osquery::ExtensionStatus>;
-
-    /// Ping the osquery daemon to maintain the connection.
-    fn ping(&mut self) -> thrift::Result<osquery::ExtensionStatus>;
-
-    /// Execute a SQL query against osquery.
-    fn query(&mut self, sql: String) -> thrift::Result<crate::ExtensionResponse>;
-
-    /// Get column information for a SQL query without executing it.
-    fn get_query_columns(&mut self, sql: String) -> thrift::Result<crate::ExtensionResponse>;
-}
 
 /// Production implementation of [`OsqueryClient`] using Thrift over Unix sockets.
 pub struct ThriftClient {
@@ -152,3 +124,40 @@ impl OsqueryClient for ThriftClient {
 ///
 /// Existing code using `Client` will continue to work unchanged.
 pub type Client = ThriftClient;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::ErrorKind;
+    use std::time::Duration;
+
+    #[test]
+    fn test_thrift_client_new_with_invalid_path() {
+        let result = ThriftClient::new("/nonexistent/socket", Duration::from_secs(1));
+        assert!(result.is_err());
+        assert_eq!(result.err().unwrap().kind(), ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn test_thrift_client_new_with_empty_path() {
+        let result = ThriftClient::new("", Duration::from_secs(1));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_thrift_client_new_with_directory_path() {
+        let result = ThriftClient::new("/tmp", Duration::from_secs(1));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_client_type_alias() {
+        use std::mem;
+
+        assert_eq!(mem::size_of::<Client>(), mem::size_of::<ThriftClient>());
+        assert_eq!(
+            std::any::type_name::<Client>(),
+            std::any::type_name::<ThriftClient>()
+        );
+    }
+}
