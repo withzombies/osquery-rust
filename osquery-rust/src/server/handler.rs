@@ -215,7 +215,11 @@ mod tests {
         request.insert("action".to_string(), "generate".to_string());
 
         let response = handler
-            .handle_call("table".to_string(), "test_handler_table".to_string(), request)
+            .handle_call(
+                "table".to_string(),
+                "test_handler_table".to_string(),
+                request,
+            )
             .unwrap();
 
         // Should get a successful response (code None means success in osquery terms)
@@ -250,8 +254,11 @@ mod tests {
         let handler = Handler::new(&plugins, shutdown_flag).unwrap();
 
         let request = osquery::ExtensionPluginRequest::new();
-        let result =
-            handler.handle_call("table".to_string(), "nonexistent_table".to_string(), request);
+        let result = handler.handle_call(
+            "table".to_string(),
+            "nonexistent_table".to_string(),
+            request,
+        );
 
         assert!(result.is_err());
     }
