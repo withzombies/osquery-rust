@@ -1,7 +1,9 @@
 /// Core server implementation for osquery extensions
+use crate::_osquery as osquery;
 use crate::client::{OsqueryClient, ThriftClient};
 use crate::plugin::OsqueryPlugin;
 use crate::server::event_loop::EventLoop;
+use crate::server::handler::Handler;
 use crate::server::lifecycle::ServerLifecycle;
 use crate::server::registry::RegistryManager;
 use crate::server::signal_handler::SignalHandler;
@@ -10,9 +12,14 @@ use clap::crate_name;
 use std::io::Error;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::thread;
+use thrift::protocol::{TBinaryInputProtocolFactory, TBinaryOutputProtocolFactory};
+use thrift::transport::{TBufferedReadTransportFactory, TBufferedWriteTransportFactory};
+
 pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static, C: OsqueryClient = ThriftClient>
 {
     name: String,
+    socket_path: String,
     client: C,
     plugins: Vec<P>,
     lifecycle: ServerLifecycle,
@@ -39,6 +46,7 @@ impl<P: OsqueryPlugin + Clone + Send + 'static> Server<P, ThriftClient> {
 
         Ok(Server {
             name: name.to_string(),
+            socket_path: socket_path.to_string(),
             client,
             plugins: Vec::new(),
             lifecycle,
@@ -60,6 +68,7 @@ impl<P: OsqueryPlugin + Clone + Send + 'static, C: OsqueryClient> Server<P, C> {
 
         Server {
             name: name.to_string(),
+            socket_path: socket_path.to_string(),
             client,
             plugins: Vec::new(),
             lifecycle,
@@ -114,6 +123,47 @@ impl<P: OsqueryPlugin + Clone + Send + 'static, C: OsqueryClient> Server<P, C> {
             "Extension registered with UUID: {:?}",
             self.lifecycle.uuid()
         );
+
+        // Create the listener socket path: {socket_path}.{uuid}
+        let listen_path = format!(
+            "{}.{}",
+            self.socket_path,
+            self.lifecycle.uuid().unwrap_or(0)
+        );
+
+        // Clone data for the listener thread
+        let plugins = self.plugins.clone();
+        let shutdown_flag = Arc::clone(&self.lifecycle.shutdown_flag);
+
+        // Create the handler and processor
+        let handler = Handler::new(&plugins, shutdown_flag)?;
+        let processor = osquery::ExtensionManagerSyncProcessor::new(handler);
+
+        // Create transport and protocol factories
+        let read_transport_factory = TBufferedReadTransportFactory::new();
+        let write_transport_factory = TBufferedWriteTransportFactory::new();
+        let input_protocol_factory = TBinaryInputProtocolFactory::new();
+        let output_protocol_factory = TBinaryOutputProtocolFactory::new();
+
+        // Create and start the thrift server
+        let mut server = thrift::server::TServer::new(
+            read_transport_factory,
+            input_protocol_factory,
+            write_transport_factory,
+            output_protocol_factory,
+            processor,
+            1, // Single worker thread
+        );
+
+        log::info!("Starting extension listener on: {}", listen_path);
+
+        // Spawn the listener thread
+        thread::spawn(move || {
+            if let Err(e) = server.listen_uds(&listen_path) {
+                log::error!("Extension listener error: {}", e);
+            }
+        });
+
         Ok(())
     }
 

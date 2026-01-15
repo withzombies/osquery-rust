@@ -290,8 +290,10 @@ CONFIG_MARKER="$CI_DIR/logs/config_marker.txt"
 cd "$PROJECT_ROOT"
 
 # Set environment variables for extensions BEFORE building
+# These env vars are inherited by extensions when osquery autoloads them
 export FILE_LOGGER_PATH="$LOGGER_FILE"
 export CONFIG_MARKER_PATH="$CONFIG_MARKER"
+export OSQUERY_SOCKET="$SOCKET_PATH"
 
 echo "Building extensions..."
 cargo build --workspace 2>&1 | tail -5
@@ -359,8 +361,8 @@ done
 echo "Waiting for extensions to register..."
 for i in {1..30}; do
     # Check osqueryd log for extension registration messages
-    LOGGER_READY=$(grep -c "registered logger plugin file_logger" "$CI_DIR/osqueryd.log" 2>/dev/null || echo 0)
-    CONFIG_READY=$(grep -c "registered config plugin static_config" "$CI_DIR/osqueryd.log" 2>/dev/null || echo 0)
+    LOGGER_READY=$(grep -c "registered logger plugin file_logger" "$CI_DIR/osqueryd.log" 2>/dev/null | head -1 || echo 0)
+    CONFIG_READY=$(grep -c "registered config plugin static_config" "$CI_DIR/osqueryd.log" 2>/dev/null | head -1 || echo 0)
 
     if [ "$LOGGER_READY" -ge 1 ] && [ "$CONFIG_READY" -ge 1 ]; then
         echo "Extensions registered successfully"

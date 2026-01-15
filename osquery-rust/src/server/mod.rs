@@ -9,6 +9,7 @@
 
 pub mod core;
 pub mod event_loop;
+pub mod handler;
 pub mod lifecycle;
 pub mod registry;
 pub mod signal_handler;
