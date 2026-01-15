@@ -6,7 +6,6 @@ pub(crate) mod _osquery;
 mod client;
 pub mod plugin;
 mod server;
-mod util;
 
 pub use crate::client::{Client, OsqueryClient, ThriftClient};
 pub use crate::server::{Server, ServerStopHandle};

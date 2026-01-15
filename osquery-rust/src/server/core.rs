@@ -10,10 +10,6 @@ use clap::crate_name;
 use std::io::Error;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::time::Duration;
-
-pub const DEFAULT_PING_INTERVAL: Duration = Duration::from_millis(500);
-
 pub struct Server<P: OsqueryPlugin + Clone + Send + Sync + 'static, C: OsqueryClient = ThriftClient>
 {
     name: String,

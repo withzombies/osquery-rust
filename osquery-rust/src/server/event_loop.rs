@@ -18,11 +18,6 @@ impl Default for EventLoop {
 }
 
 impl EventLoop {
-    /// Create a new event loop with custom ping interval
-    pub fn with_ping_interval(ping_interval: Duration) -> Self {
-        Self { ping_interval }
-    }
-
     /// Main event loop - ping osquery until shutdown
     pub fn run<C>(&self, client: &mut C, lifecycle: &ServerLifecycle)
     where

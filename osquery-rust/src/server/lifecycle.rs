@@ -38,16 +38,6 @@ impl ServerLifecycle {
         self.uuid
     }
 
-    /// Set the listener thread
-    pub fn set_listener_thread(&mut self, thread: thread::JoinHandle<()>) {
-        self.listener_thread = Some(thread);
-    }
-
-    /// Set the listen path
-    pub fn set_listen_path(&mut self, path: String) {
-        self.listen_path = Some(path);
-    }
-
     /// Check if server should shutdown
     pub fn should_shutdown(&self) -> bool {
         self.shutdown_flag.load(Ordering::Acquire)
