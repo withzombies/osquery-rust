@@ -286,7 +286,7 @@ fn test_resource_cleanup_on_shutdown() {
         .expect("Cleanup server should complete gracefully");
     mock_handle.join().expect("Mock osquery should complete");
 
-    // Verify socket cleanup: the original mock socket may remain, 
+    // Verify socket cleanup: the original mock socket may remain,
     // but extension sockets (with UUID suffix) should be cleaned up.
     // We can't easily check the UUID-suffixed socket without server internals,
     // so we verify the server completed gracefully (which includes cleanup).

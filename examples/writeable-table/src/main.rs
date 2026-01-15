@@ -71,17 +71,16 @@ impl Table for WriteableTable {
             return UpdateResult::Error("Row must have at least 2 elements".to_string());
         }
 
-        let Some(name) = row_array[0].as_str() else {
+        let Some(name) = row_array.first().and_then(|v| v.as_str()) else {
             return UpdateResult::Error("Name must be a string".to_string());
         };
 
-        let Some(lastname) = row_array[1].as_str() else {
+        let Some(lastname) = row_array.get(1).and_then(|v| v.as_str()) else {
             return UpdateResult::Error("Lastname must be a string".to_string());
         };
 
-        if self.items.contains_key(&rowid) {
-            self.items
-                .insert(rowid, (name.to_string(), lastname.to_string()));
+        if let std::collections::btree_map::Entry::Occupied(mut e) = self.items.entry(rowid) {
+            e.insert((name.to_string(), lastname.to_string()));
             UpdateResult::Ok
         } else {
             UpdateResult::NotFound
@@ -108,11 +107,11 @@ impl Table for WriteableTable {
             return InsertResult::Error("Row must have at least 2 elements".to_string());
         }
 
-        let Some(name) = row_array[0].as_str() else {
+        let Some(name) = row_array.first().and_then(|v| v.as_str()) else {
             return InsertResult::Error("Name must be a string".to_string());
         };
 
-        let Some(lastname) = row_array[1].as_str() else {
+        let Some(lastname) = row_array.get(1).and_then(|v| v.as_str()) else {
             return InsertResult::Error("Lastname must be a string".to_string());
         };
 

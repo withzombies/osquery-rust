@@ -24,24 +24,6 @@
 
 #![cfg(feature = "osquery-tests")]
 
-mod socket_helpers;
-mod extension_helpers;
-mod test_tables;
-mod basic_tests;
-mod plugin_tests;
-mod autoload_tests;
-
-#[allow(clippy::expect_used, clippy::panic)] // Integration tests can panic on infra failures
-mod tests {
-    use crate::socket_helpers::get_osquery_socket;
-    use crate::extension_helpers::wait_for_extension_registered;
-    use crate::test_tables::{TestEndToEndTable, TestLifecycleTable};
-    use crate::basic_tests::*;
-    use crate::plugin_tests::*;
-    use crate::autoload_tests::*;
-}
-
-#[cfg(feature = "osquery-tests")]
 mod socket_helpers {
     use std::path::Path;
     use std::time::Duration;
@@ -105,10 +87,9 @@ mod socket_helpers {
     }
 }
 
-#[cfg(feature = "osquery-tests")]
 mod extension_helpers {
-    use std::time::Duration;
     use osquery_rust_ng::{OsqueryClient, ThriftClient};
+    use std::time::Duration;
 
     pub const REGISTRATION_TIMEOUT: Duration = Duration::from_secs(10);
     pub const REGISTRATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -152,7 +133,6 @@ mod extension_helpers {
     }
 }
 
-#[cfg(feature = "osquery-tests")]
 mod test_tables {
     use osquery_rust_ng::plugin::{ColumnDef, ColumnOptions, ColumnType, ReadOnlyTable};
     use osquery_rust_ng::{ExtensionPluginRequest, ExtensionResponse, ExtensionStatus};
@@ -220,11 +200,10 @@ mod test_tables {
     }
 }
 
-#[cfg(feature = "osquery-tests")]
 #[allow(clippy::expect_used, clippy::panic)]
 mod basic_tests {
-    use osquery_rust_ng::{OsqueryClient, ThriftClient};
     use crate::socket_helpers::get_osquery_socket;
+    use osquery_rust_ng::{OsqueryClient, ThriftClient};
 
     #[test]
     pub fn test_thrift_client_connects_to_osquery() {
@@ -291,15 +270,14 @@ mod basic_tests {
     }
 }
 
-#[cfg(feature = "osquery-tests")]
 #[allow(clippy::expect_used, clippy::panic)]
 mod plugin_tests {
+    use crate::extension_helpers::wait_for_extension_registered;
+    use crate::socket_helpers::get_osquery_socket;
+    use crate::test_tables::{TestEndToEndTable, TestLifecycleTable};
     use osquery_rust_ng::plugin::TablePlugin;
     use osquery_rust_ng::{OsqueryClient, Server, ThriftClient};
     use std::thread;
-    use crate::socket_helpers::get_osquery_socket;
-    use crate::extension_helpers::wait_for_extension_registered;
-    use crate::test_tables::{TestEndToEndTable, TestLifecycleTable};
 
     #[test]
     pub fn test_server_lifecycle() {
@@ -480,14 +458,13 @@ mod plugin_tests {
     }
 }
 
-#[cfg(feature = "osquery-tests")]
 #[allow(clippy::expect_used, clippy::panic)]
 mod autoload_tests {
+    use crate::socket_helpers::get_osquery_socket;
     use osquery_rust_ng::{OsqueryClient, ThriftClient};
     use std::fs;
     use std::process::Command;
     use std::time::Duration;
-    use crate::socket_helpers::get_osquery_socket;
 
     #[test]
     pub fn test_autoloaded_logger_receives_init() {
